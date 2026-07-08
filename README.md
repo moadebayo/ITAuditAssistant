@@ -116,19 +116,44 @@ EXPOSE 3000
 CMD ["npm","start"]
 ```
 
-### Before putting it in front of real users
+## Security & configuration
 
-This is a working application, not a hardened product. Consider:
+The app ships with authentication, authorization, and rate limiting built in. Configure them via
+environment variables (see `.env.example`):
 
-- **Authentication** — there is none. Anyone who can reach the server can spend your API budget and
-  write to the skill library via the Skill Studio.
-- **Skill writes** — `/api/skills/save` writes files into `.claude/skills/it-auditor/references/`
-  (confined to that directory). On a shared deployment, gate it behind auth or make it read-only.
-- **Rate limiting** — add `express-rate-limit` on `/api/generate` and `/api/skills/improve`.
+| Variable | Effect |
+|---|---|
+| `AUTH_PASSWORD` | When set, **all** generation and skill APIs require a login. The front end shows a sign-in screen. When unset, the app is **open** (a console warning is printed) — anyone who can reach it can generate. |
+| `ADMIN_PASSWORD` | Optional. When set, only admins may use the Skill Studio (research + save). Users who sign in with `AUTH_PASSWORD` get generation + read-only browsing. When unset, any signed-in user is an admin. |
+| `SESSION_SECRET` | Signs the HMAC session cookie. Set a long random value in production so sessions survive restarts and can't be forged. A random one is generated at startup if unset. |
+| `SKILL_WRITE` | Whether the Skill Studio may write references at all. **Default: enabled only when `AUTH_PASSWORD` is set** (safe-by-default). In open mode, writes stay **off** unless `SKILL_WRITE=true`. Set `SKILL_WRITE=false` to force a read-only skill library. |
+| `RATE_LIMIT_GENERATE` / `RATE_LIMIT_IMPROVE` / `RATE_LIMIT_LOGIN` | Per-IP request caps over a 15-minute window (defaults 30 / 10 / 10) via `express-rate-limit`. |
+| `TRUST_PROXY` | Set when behind a reverse proxy so client IPs are read from `X-Forwarded-For` (needed for correct rate limiting and `Secure` cookies). |
+
+How the controls compose:
+
+- **Authentication** — signed, HttpOnly session cookies (12-hour TTL); passwords are compared in
+  constant time. Sign-in is rate-limited to slow brute force. `/api/generate`, `/api/extract`, and
+  the skill APIs return `401` without a valid session.
+- **Skill writes** — `/api/skills/improve` and `/api/skills/save` require the admin role **and**
+  `SKILL_WRITE`; saves are confined to `.claude/skills/it-auditor/references/` (path-checked,
+  slug-validated). The Skill Studio UI shows a read-only notice and disables research/save when the
+  account can't write.
+- **Rate limiting** — the expensive endpoints (`/api/generate`, `/api/skills/improve`) and `/api/login`
+  are throttled per IP; a `429` is returned when the window fills.
 - **Data handling** — job descriptions, resumes, and audit scope details are sent to the Anthropic API.
-  Check that against your firm's confidentiality obligations before uploading client material.
+  The UI shows a confidentiality notice; check the flow against your firm's obligations before
+  uploading client material. For sensitive use, look into zero-retention arrangements. The API key
+  stays server-side and is never sent to the browser.
 - **Cost** — each generation is a Claude call with a large system prompt; Skill Studio also runs web
-  search. Watch usage.
+  search. The server logs per-call and cumulative token usage to the console so you can watch spend;
+  the rate limits bound worst-case cost.
+
+### Still your responsibility
+
+The built-in auth is a shared-password gate suitable for a small team or a protected deployment — not a
+multi-tenant identity system. For broader exposure, front it with SSO / a reverse proxy, use per-user
+accounts, and persist rate-limit state in a shared store if you run multiple instances.
 
 ## A note on the output
 

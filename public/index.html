@@ -148,6 +148,22 @@
   .err b{display:block;margin-bottom:2px}
   .ok-banner{background:var(--accent-soft);border:1px solid #bfe0dc;color:#0b5c57;padding:12px 14px;border-radius:7px;font-size:13px;margin-bottom:16px}
 
+  /* auth + notices */
+  input[type=password]{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:#fdfdfe;font-family:inherit;font-size:14px;color:var(--ink);transition:border-color .15s}
+  input[type=password]:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
+  .logout{border:1px solid var(--line);background:transparent;color:var(--slate);padding:5px 11px;border-radius:7px;font-size:12px}
+  .logout:hover{border-color:var(--ink);color:var(--ink)}
+  .overlay{position:fixed;inset:0;z-index:100;background:rgba(18,24,31,.55);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;padding:24px}
+  .overlay[hidden]{display:none}
+  .login{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);width:100%;max-width:380px;padding:28px}
+  .login .brand{margin-bottom:14px}
+  .login h2{font-family:var(--display);font-weight:600;font-size:22px;margin:0 0 6px}
+  .login p{margin:0 0 18px;color:var(--slate);font-size:14px}
+  .login label{margin-top:6px}
+  .login .row2{display:flex;gap:10px;margin-top:14px;align-items:center}
+  .notice{background:#fbfcfd;border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:7px;padding:10px 12px;font-size:12px;color:var(--slate);margin-bottom:18px}
+  .notice b{color:var(--ink)}
+
   .sources{border-top:1px solid var(--line);padding:14px 18px;background:#fbfcfd;font-size:12px}
   .sources b{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);display:block;margin-bottom:6px}
   .sources ul{margin:0;padding-left:1.1em}
@@ -174,6 +190,7 @@
       <button class="tab" id="tabStudio" role="tab" aria-selected="false">Skill Studio</button>
     </div>
     <div class="spacer"></div>
+    <button class="logout" id="logoutBtn" hidden>Sign out</button>
     <div class="status" id="status"><span class="dot" id="statusDot"></span><span id="statusText">checking…</span></div>
   </div>
 </header>
@@ -213,6 +230,7 @@
       <div class="sticky">
         <div class="panel">
           <div class="sec-head" style="margin-bottom:18px"><h2 style="font-size:19px" id="cfgTitle">Configure</h2></div>
+          <div class="notice"><b>Confidentiality:</b> scope, findings, job descriptions, and resumes you enter are sent to the Anthropic API to generate the draft. Don't paste client-confidential material unless your firm's obligations allow it.</div>
           <div id="errBox"></div>
           <form id="cfg" onsubmit="return false"><div id="dynFields"></div></form>
           <div class="actions">
@@ -248,6 +266,8 @@
       <div class="sticky">
         <div class="panel">
           <div class="sec-head" style="margin-bottom:18px"><h2 style="font-size:19px">Research &amp; improve</h2></div>
+          <div class="notice"><b>Confidentiality:</b> research runs a web search and sends your instructions to the Anthropic API. Saved references are written into the skill and used for every future draft.</div>
+          <div id="studioReadonly"></div>
           <div id="studioErr"></div>
           <div class="field">
             <label for="skTarget">Reference to improve <span class="opt">or add new</span></label>
@@ -301,6 +321,18 @@
   <span class="mono">ITAuditVault</span>
   <span>Drafts require auditor review. Generated content does not replace professional judgment, independence, or evidence.</span>
 </footer>
+
+<div class="overlay" id="loginOverlay" hidden>
+  <form class="login" id="loginForm">
+    <div class="brand"><div class="mark"><i></i><i></i><i></i><i></i></div> ITAuditVault <span class="sub">IT Audit AI</span></div>
+    <h2>Sign in</h2>
+    <p>This instance is protected. Enter the access password to continue.</p>
+    <div id="loginErr"></div>
+    <label for="loginPw">Password</label>
+    <input type="password" id="loginPw" autocomplete="current-password" />
+    <div class="row2"><button class="btn" type="submit" id="loginBtn">Sign in</button><span class="note" id="loginNote"></span></div>
+  </form>
+</div>
 
 <script>
 /* ============================================================
@@ -555,6 +587,7 @@ document.getElementById('genBtn').onclick=async()=>{
   try{
     const res=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({artifact:selected.id, artifactName:selected.name, inputs:state})});
+    if(is401(res)) throw new Error('Sign in to continue.');
     await readSSE(res, t=>{ lastMarkdown+=t; stream.innerHTML=md(lastMarkdown); stream.scrollTop=stream.scrollHeight; });
     stream.classList.remove('cursor');
     if(!lastMarkdown.trim()) throw new Error('No content returned. Check the server logs.');
@@ -595,7 +628,8 @@ const studioSources=document.getElementById('studioSources');
 async function loadSkills(){
   studioLoaded=true;
   try{
-    const r=await fetch('/api/skills'); const j=await r.json();
+    const r=await fetch('/api/skills'); if(is401(r)) return;
+    const j=await r.json();
     skillList=j.skills||[];
     document.getElementById('libCount').textContent=`${skillList.length} references`;
     // dropdown
@@ -628,7 +662,8 @@ async function viewReference(name){
   studioOutWrap.innerHTML=`<div class="out-body doc"><p class="note">loading…</p></div>`;
   studioSources.innerHTML='';
   try{
-    const r=await fetch('/api/skills/'+encodeURIComponent(name)); const j=await r.json();
+    const r=await fetch('/api/skills/'+encodeURIComponent(name)); if(is401(r)) return;
+    const j=await r.json();
     studioMarkdown=j.markdown||''; studioBase=name;
     document.getElementById('studioOutTitle').textContent=`reference / ${name}`;
     studioOutWrap.innerHTML=`<div class="out-body doc">${md(studioMarkdown)}</div>`;
@@ -664,6 +699,7 @@ document.getElementById('researchBtn').onclick=async()=>{
 
   try{
     const res=await fetch('/api/skills/improve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(is401(res)) throw new Error('Sign in to continue.');
     const last=await readSSE(res, t=>{ studioMarkdown+=t; stream.innerHTML=md(studioMarkdown); stream.scrollTop=stream.scrollHeight; });
     stream.classList.remove('cursor');
     if(!studioMarkdown.trim()) throw new Error('No draft returned. Check the server logs.');
@@ -701,6 +737,7 @@ document.getElementById('saveBtn').onclick=async()=>{
   const btn=document.getElementById('saveBtn'); btn.disabled=true; btn.textContent='Saving…';
   try{
     const r=await fetch('/api/skills/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name, markdown:studioMarkdown})});
+    if(is401(r)) throw new Error('Sign in to continue.');
     const j=await r.json();
     if(!r.ok) throw new Error(j.error||`Server returned ${r.status}`);
     document.getElementById('studioErr').innerHTML=`<div class="ok-banner">Saved <b>${escapeHtml(name)}.md</b> to the skill (${j.created?'new':'updated'}). The library now has ${j.refs} references and this content is used immediately for generation.</div>`;
@@ -719,15 +756,74 @@ document.getElementById('skCopyBtn').onclick=async()=>{
 };
 document.getElementById('skDlBtn').onclick=()=>downloadMd(studioMarkdown, studioBase);
 
-/* ---------- health check ---------- */
-(async()=>{
+/* ---------- auth + capabilities ---------- */
+let CAPS = { live:false, refs:0, authRequired:false, authed:true, role:'user', canWrite:false, skillWriteEnabled:false };
+
+function gateStudio(c){
+  const canWrite = !!c.canWrite;
+  ['skTarget','skName','skTopic','skInstr','researchBtn'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.disabled=!canWrite;
+  });
+  const save=document.getElementById('saveBtn');
+  if(save) save.disabled = !canWrite || !studioMarkdown.trim();
+  const ro=document.getElementById('studioReadonly');
+  if(!ro) return;
+  if(canWrite){ ro.innerHTML=''; return; }
+  const msg = !c.skillWriteEnabled
+    ? 'This server runs the skill library <b>read-only</b>. You can browse references, but research and save are disabled.'
+    : (c.authRequired && !c.authed)
+      ? 'Sign in to research and save skill references.'
+      : 'Your account has <b>read-only</b> Skill Studio access. Ask an admin to research or save references.';
+  ro.innerHTML=`<div class="notice" style="border-left-color:var(--accent)">${msg}</div>`;
+}
+
+function applyCaps(c){
+  CAPS=c; liveMode=!!c.live;
   const dot=document.getElementById('statusDot'), txt=document.getElementById('statusText');
+  dot.className='dot '+(liveMode?'live':'demo');
+  const base=liveMode?`live · claude · ${c.refs} refs`:`demo · ${c.refs} refs`;
+  const who=c.authRequired?(c.authed?` · ${c.role}`:' · signed out'):'';
+  txt.textContent=base+who;
+  document.getElementById('logoutBtn').hidden=!(c.authRequired && c.authed);
+  document.getElementById('loginOverlay').hidden=!(c.authRequired && !c.authed);
+  gateStudio(c);
+}
+
+function requireLogin(msg){
+  CAPS.authed=false;
+  document.getElementById('loginOverlay').hidden=false;
+  document.getElementById('logoutBtn').hidden=true;
+  document.getElementById('loginErr').innerHTML=msg?`<div class="err">${escapeHtml(msg)}</div>`:'';
+  const pw=document.getElementById('loginPw'); if(pw) pw.focus();
+}
+function is401(res){ if(res && res.status===401){ requireLogin('Your session expired. Sign in again.'); return true; } return false; }
+
+document.getElementById('loginForm').onsubmit=async(e)=>{
+  e.preventDefault();
+  const btn=document.getElementById('loginBtn'); btn.disabled=true; btn.textContent='Signing in…';
+  document.getElementById('loginErr').innerHTML='';
   try{
-    const r=await fetch('/api/health'); const j=await r.json();
-    liveMode=!!j.live;
-    dot.className='dot '+(liveMode?'live':'demo');
-    txt.textContent = liveMode ? `live · claude · ${j.refs} refs` : `demo mode · ${j.refs} refs`;
-  }catch{ dot.className='dot demo'; txt.textContent='server offline'; }
+    const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:document.getElementById('loginPw').value})});
+    const j=await r.json();
+    if(!r.ok) throw new Error(j.error||'Sign-in failed.');
+    document.getElementById('loginPw').value='';
+    applyCaps(j);
+    studioLoaded=false;
+    if(!document.getElementById('view-studio').hidden) loadSkills();
+  }catch(err){
+    document.getElementById('loginErr').innerHTML=`<div class="err">${escapeHtml(err.message)}</div>`;
+  }finally{ btn.disabled=false; btn.textContent='Sign in'; }
+};
+
+document.getElementById('logoutBtn').onclick=async()=>{
+  try{ await fetch('/api/logout',{method:'POST'}); }catch{}
+  studioLoaded=false;
+  try{ const r=await fetch('/api/health'); applyCaps(await r.json()); }catch{}
+};
+
+(async()=>{
+  try{ const r=await fetch('/api/health'); applyCaps(await r.json()); }
+  catch{ const dot=document.getElementById('statusDot'),txt=document.getElementById('statusText'); dot.className='dot demo'; txt.textContent='server offline'; }
 })();
 </script>
 </body>

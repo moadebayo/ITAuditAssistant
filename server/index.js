@@ -22,6 +22,8 @@ import multer from 'multer';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import crypto from 'node:crypto';
+import rateLimit from 'express-rate-limit';
 import Anthropic from '@anthropic-ai/sdk';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -38,6 +40,127 @@ app.use(express.static(path.join(ROOT, 'public')));
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
 
 const client = API_KEY ? new Anthropic({ apiKey: API_KEY }) : null;
+
+/* ==================================================================
+   0. Authentication, authorization, and rate limiting
+   ------------------------------------------------------------------
+   - AUTH_PASSWORD gates all generation / skill APIs behind a login.
+   - ADMIN_PASSWORD (optional) reserves Skill Studio writes for admins.
+   - SKILL_WRITE controls whether the skill can be modified at all.
+   - express-rate-limit caps the expensive endpoints per IP.
+   Sessions are signed HMAC cookies — no extra dependency, no server state.
+   ================================================================== */
+const AUTH_PASSWORD  = process.env.AUTH_PASSWORD || '';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
+const AUTH_REQUIRED  = !!AUTH_PASSWORD;
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const SESSION_TTL_MS = 1000 * 60 * 60 * 12; // 12 hours
+/* Skill writes: allowed by default only when auth is configured (safe-by-default).
+   In open mode they stay OFF unless SKILL_WRITE=true is set explicitly. */
+const SKILL_WRITE = process.env.SKILL_WRITE
+  ? /^(1|true|yes|on)$/i.test(process.env.SKILL_WRITE)
+  : AUTH_REQUIRED;
+const TRUST_PROXY = process.env.TRUST_PROXY || '';
+if (TRUST_PROXY) {
+  const n = Number(TRUST_PROXY);
+  app.set('trust proxy', /^(1|true)$/i.test(TRUST_PROXY) ? true : (Number.isNaN(n) ? TRUST_PROXY : n));
+}
+const COOKIE = 'itav_session';
+
+const b64url = buf => Buffer.from(buf).toString('base64url');
+const sign = data => crypto.createHmac('sha256', SESSION_SECRET).update(data).digest('base64url');
+function makeToken(role) {
+  const payload = b64url(JSON.stringify({ role, exp: Date.now() + SESSION_TTL_MS }));
+  return `${payload}.${sign(payload)}`;
+}
+function verifyToken(token) {
+  if (!token || !token.includes('.')) return null;
+  const [payload, mac] = token.split('.');
+  const expect = sign(payload);
+  if (!mac || mac.length !== expect.length) return null;
+  if (!crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(expect))) return null;
+  try {
+    const obj = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    if (!obj.exp || obj.exp < Date.now()) return null;
+    return obj;
+  } catch { return null; }
+}
+function parseCookies(req) {
+  const out = {};
+  const h = req.headers.cookie;
+  if (!h) return out;
+  for (const part of h.split(';')) {
+    const i = part.indexOf('=');
+    if (i > -1) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+  }
+  return out;
+}
+function pwEqual(a, b) {
+  const ba = Buffer.from(String(a)), bb = Buffer.from(String(b));
+  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+}
+function cookieHeader(req, token, maxAgeSec) {
+  const https = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  return `${COOKIE}=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAgeSec}${https ? '; Secure' : ''}`;
+}
+
+/* Resolve the caller's role on every request.
+   Open mode (no AUTH_PASSWORD): callers are treated as admin only when writes
+   are enabled, else as read/generate users. Auth mode: role comes from the cookie. */
+app.use((req, _res, next) => {
+  if (!AUTH_REQUIRED) {
+    req.authed = true;
+    req.role = SKILL_WRITE ? 'admin' : 'user';
+  } else {
+    const tok = verifyToken(parseCookies(req)[COOKIE]);
+    req.authed = !!tok;
+    req.role = tok ? tok.role : null;
+  }
+  next();
+});
+
+function capabilities(req) {
+  const canWrite = SKILL_WRITE && req.role === 'admin';
+  return {
+    live: !!client,
+    model: client ? MODEL : null,
+    refs: Object.keys(SKILL.refs).length,
+    authRequired: AUTH_REQUIRED,
+    authed: AUTH_REQUIRED ? req.authed : true,
+    role: req.role,
+    canWrite,
+    skillWriteEnabled: SKILL_WRITE,
+  };
+}
+
+function requireAuth(req, res, next) {
+  if (!AUTH_REQUIRED || req.authed) return next();
+  res.status(401).json({ error: 'Sign in to continue.' });
+}
+function requireWrite(req, res, next) {
+  if (!SKILL_WRITE) return res.status(403).json({ error: 'Skill Studio is read-only on this server.' });
+  if (AUTH_REQUIRED && !req.authed) return res.status(401).json({ error: 'Sign in to continue.' });
+  if (req.role === 'admin') return next();
+  res.status(403).json({
+    error: AUTH_REQUIRED
+      ? 'Admin access is required to change the skill library.'
+      : 'Skill writing is disabled. Set SKILL_WRITE=true (and preferably AUTH_PASSWORD) to enable it.',
+  });
+}
+
+const mkLimiter = (max, msg) => rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(max) > 0 ? Number(max) : 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: msg },
+});
+const generateLimiter = mkLimiter(process.env.RATE_LIMIT_GENERATE || 30, 'Rate limit reached. Please wait a few minutes and try again.');
+const improveLimiter  = mkLimiter(process.env.RATE_LIMIT_IMPROVE  || 10, 'Skill Studio research rate limit reached. Please wait a few minutes.');
+const loginLimiter    = mkLimiter(process.env.RATE_LIMIT_LOGIN    || 10, 'Too many sign-in attempts. Please wait a few minutes.');
+
+/* Cumulative token usage this process, for the "watch your usage" cost guidance. */
+const USAGE = { in: 0, out: 0, calls: 0 };
 
 /* ==================================================================
    1. Load the IT Audit skill (re-loadable — Skill Studio writes to it)
@@ -320,6 +443,13 @@ async function streamClaude({ send, system, user, tools, maxTokens = 8000 }) {
   let finalMsg = null;
   try { finalMsg = await stream.finalMessage(); }
   catch (err) { await stream.done?.().catch(() => {}); }
+  const u = finalMsg?.usage;
+  if (u) {
+    USAGE.in += u.input_tokens || 0;
+    USAGE.out += u.output_tokens || 0;
+    USAGE.calls += 1;
+    console.log(`  usage: in=${u.input_tokens ?? '?'} out=${u.output_tokens ?? '?'} · session total in=${USAGE.in} out=${USAGE.out} over ${USAGE.calls} call(s)`);
+  }
   return finalMsg;
 }
 
@@ -341,11 +471,27 @@ function extractSources(finalMsg) {
 /* ==================================================================
    4. Routes — health, extract, generate
    ================================================================== */
-app.get('/api/health', (_req, res) => {
-  res.json({ live: !!client, model: client ? MODEL : null, refs: Object.keys(SKILL.refs).length });
+/* Public — the app shell / login screen reads this to learn its capabilities. */
+app.get('/api/health', (req, res) => res.json(capabilities(req)));
+
+app.post('/api/login', loginLimiter, (req, res) => {
+  if (!AUTH_REQUIRED) return res.json({ ok: true, ...capabilities(req) });
+  const password = (req.body && req.body.password) || '';
+  let role = null;
+  if (ADMIN_PASSWORD && pwEqual(password, ADMIN_PASSWORD)) role = 'admin';
+  else if (AUTH_PASSWORD && pwEqual(password, AUTH_PASSWORD)) role = ADMIN_PASSWORD ? 'user' : 'admin';
+  if (!role) return res.status(401).json({ error: 'Incorrect password.' });
+  res.setHeader('Set-Cookie', cookieHeader(req, makeToken(role), Math.floor(SESSION_TTL_MS / 1000)));
+  req.role = role; req.authed = true;
+  res.json({ ok: true, ...capabilities(req) });
 });
 
-app.post('/api/extract', upload.single('file'), async (req, res) => {
+app.post('/api/logout', (req, res) => {
+  res.setHeader('Set-Cookie', cookieHeader(req, '', 0));
+  res.json({ ok: true });
+});
+
+app.post('/api/extract', requireAuth, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
   const name = req.file.originalname.toLowerCase();
   try {
@@ -368,7 +514,7 @@ app.post('/api/extract', upload.single('file'), async (req, res) => {
   }
 });
 
-app.post('/api/generate', async (req, res) => {
+app.post('/api/generate', requireAuth, generateLimiter, async (req, res) => {
   const { artifact, artifactName, inputs = {} } = req.body || {};
   if (!artifact || !TASKS[artifact]) return res.status(400).json({ error: 'Unknown artifact type.' });
   const send = openSSE(res);
@@ -399,7 +545,7 @@ app.post('/api/generate', async (req, res) => {
    ================================================================== */
 const SLUG = /^[a-z0-9][a-z0-9-]{1,60}$/;
 
-app.get('/api/skills', (_req, res) => {
+app.get('/api/skills', requireAuth, (_req, res) => {
   const skills = Object.entries(SKILL.refs)
     .map(([name, md]) => ({
       name,
@@ -411,7 +557,7 @@ app.get('/api/skills', (_req, res) => {
   res.json({ skills, core: !!SKILL.core });
 });
 
-app.get('/api/skills/:name', (req, res) => {
+app.get('/api/skills/:name', requireAuth, (req, res) => {
   const name = req.params.name;
   if (name === 'SKILL') return res.json({ name: 'SKILL', title: 'SKILL.md', markdown: SKILL.core || '' });
   if (!SKILL.refs[name]) return res.status(404).json({ error: 'No such reference.' });
@@ -435,7 +581,7 @@ Each file is a dense, practitioner-grade reference for one domain. When you writ
 Output ONLY the Markdown file content — no preamble, no explanation before or after.
 `.trim();
 
-app.post('/api/skills/improve', async (req, res) => {
+app.post('/api/skills/improve', requireWrite, improveLimiter, async (req, res) => {
   const { name, topic, instructions = '' } = req.body || {};
   const existing = name && SKILL.refs[name] ? SKILL.refs[name] : null;
   const subject = (existing ? refTitle(existing, name) : (topic || name || '')).trim();
@@ -476,7 +622,7 @@ app.post('/api/skills/improve', async (req, res) => {
   }
 });
 
-app.post('/api/skills/save', (req, res) => {
+app.post('/api/skills/save', requireWrite, (req, res) => {
   const { name, markdown } = req.body || {};
   if (!name || !SLUG.test(name)) {
     return res.status(400).json({ error: 'Invalid reference name. Use lowercase letters, digits, and hyphens.' });
@@ -629,5 +775,12 @@ State what this domain covers, the systems in scope, and the frameworks it maps 
 app.listen(PORT, () => {
   console.log(`\n  ITAuditVault running → http://localhost:${PORT}`);
   console.log(`  Mode: ${client ? `LIVE (${MODEL})` : 'DEMO (set ANTHROPIC_API_KEY for live generation)'}`);
-  console.log(`  Skill references loaded: ${Object.keys(SKILL.refs).length}\n`);
+  console.log(`  Skill references loaded: ${Object.keys(SKILL.refs).length}`);
+  if (AUTH_REQUIRED) {
+    console.log(`  Auth: ENABLED${ADMIN_PASSWORD ? ' (admin password set — Skill Studio writes are admin-only)' : ''}`);
+    if (!process.env.SESSION_SECRET) console.log(`  ⚠  SESSION_SECRET not set — a random one was generated; sessions reset on restart.`);
+  } else {
+    console.log(`  ⚠  Auth: DISABLED — anyone who can reach this server can spend your API budget. Set AUTH_PASSWORD to require login.`);
+  }
+  console.log(`  Skill Studio writes: ${SKILL_WRITE ? (AUTH_REQUIRED ? 'enabled (admins)' : 'ENABLED for all — set AUTH_PASSWORD or SKILL_WRITE=false') : 'read-only'}\n`);
 });
