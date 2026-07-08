@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ITAuditVault — IT Audit AI Assistant</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#12181f; --slate:#4a5568; --mute:#8a94a3; --line:#e2e6eb;
+    --paper:#ffffff; --canvas:#f6f7f9; --accent:#0f6f6a; --accent-soft:#e6f2f1;
+    --amber:#a86b12; --amber-soft:#fdf4e3; --radius:10px;
+    --shadow:0 1px 2px rgba(18,24,31,.04), 0 8px 24px -12px rgba(18,24,31,.14);
+    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:'Inter',system-ui,-apple-system,sans-serif;
+    --display:'Fraunces',Georgia,serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--canvas);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  a{color:var(--accent)}
+  button{font-family:inherit;font-size:inherit;cursor:pointer}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+  header.top{position:sticky;top:0;z-index:50;background:rgba(255,255,255,.86);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  .top-in{max-width:1180px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;gap:14px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:-.01em}
+  .mark{width:26px;height:26px;border:1.5px solid var(--ink);border-radius:5px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;overflow:hidden}
+  .mark i{border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .mark i:nth-child(1){background:var(--accent)}
+  .mark i:nth-child(4){background:var(--ink);opacity:.12}
+  .brand span.sub{font-family:var(--mono);font-size:11px;color:var(--mute);font-weight:400;letter-spacing:.04em;text-transform:uppercase}
+  .tabs{display:flex;gap:4px;margin-left:8px}
+  .tab{border:1px solid transparent;background:transparent;color:var(--slate);padding:6px 12px;border-radius:7px;font-size:13px;font-weight:500}
+  .tab:hover{color:var(--ink)}
+  .tab[aria-selected="true"]{background:var(--accent-soft);color:var(--accent);border-color:var(--accent)}
+  .spacer{flex:1}
+  .status{font-family:var(--mono);font-size:11px;color:var(--mute);display:flex;align-items:center;gap:7px}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--mute)}
+  .dot.live{background:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .dot.demo{background:var(--amber);box-shadow:0 0 0 3px var(--amber-soft)}
+
+  main{max-width:1180px;margin:0 auto;padding:0 24px 96px}
+  .view[hidden]{display:none}
+
+  .hero{padding:56px 0 36px;border-bottom:1px solid var(--line);margin-bottom:36px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:18px}
+  h1{font-family:var(--display);font-weight:600;font-size:clamp(32px,4.4vw,50px);line-height:1.05;letter-spacing:-.02em;margin:0 0 18px;max-width:17ch}
+  h1 em{font-style:italic;color:var(--accent)}
+  .lede{font-size:17px;color:var(--slate);max-width:60ch;margin:0 0 28px}
+  .hero-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:56px;align-items:center}
+  @media(max-width:900px){.hero-grid{grid-template-columns:1fr;gap:36px}}
+
+  .matrix{border:1px solid var(--line);border-radius:var(--radius);background:var(--paper);overflow:hidden;box-shadow:var(--shadow)}
+  .matrix-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--line);background:#fbfcfd}
+  .matrix-head b{font-family:var(--mono);font-size:11px;font-weight:500;color:var(--slate);letter-spacing:.04em}
+  .matrix-head em{font-family:var(--mono);font-size:10px;font-style:normal;color:var(--mute)}
+  table.mx{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px}
+  table.mx th{text-align:left;font-weight:500;color:var(--mute);padding:8px 12px;border-bottom:1px solid var(--line);font-size:10px;letter-spacing:.05em;text-transform:uppercase}
+  table.mx td{padding:9px 12px;border-bottom:1px solid var(--line);color:var(--slate)}
+  table.mx tr:last-child td{border-bottom:none}
+  table.mx td.ref{color:var(--ink);font-weight:500}
+  .pill{display:inline-block;padding:1px 7px;border-radius:20px;font-size:10px;letter-spacing:.02em}
+  .pill.h{background:var(--amber-soft);color:var(--amber)}
+  .pill.m{background:#eef1f4;color:var(--slate)}
+  .pill.ok{background:var(--accent-soft);color:var(--accent)}
+  tr.reveal{opacity:0;animation:fade .5s forwards}
+  tr.reveal:nth-child(1){animation-delay:.15s}tr.reveal:nth-child(2){animation-delay:.3s}
+  tr.reveal:nth-child(3){animation-delay:.45s}tr.reveal:nth-child(4){animation-delay:.6s}
+  @keyframes fade{to{opacity:1}}
+
+  .sec-head{display:flex;align-items:baseline;gap:14px;margin:0 0 20px}
+  .sec-head h2{font-family:var(--display);font-weight:600;font-size:24px;letter-spacing:-.01em;margin:0}
+  .sec-head p{margin:0;color:var(--mute);font-size:14px}
+
+  .groups{display:flex;flex-direction:column;gap:34px}
+  .group-label{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);padding-bottom:8px;border-bottom:1px solid var(--line);margin-bottom:16px;display:flex;justify-content:space-between}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+  .card{position:relative;text-align:left;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:16px 16px 14px;transition:border-color .16s,transform .16s,box-shadow .16s}
+  .card:hover{border-color:#c7cfd8;transform:translateY(-1px);box-shadow:var(--shadow)}
+  .card[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+  .card[aria-pressed="true"]::after{content:"✓";position:absolute;top:12px;right:14px;color:var(--accent);font-size:13px;font-weight:600}
+  .card .ref{font-family:var(--mono);font-size:10px;color:var(--mute);letter-spacing:.06em;margin-bottom:8px}
+  .card h3{margin:0 0 5px;font-size:15px;font-weight:600;letter-spacing:-.005em}
+  .card p{margin:0;font-size:13px;color:var(--slate);line-height:1.45}
+  .card .fmt{margin-top:10px;font-family:var(--mono);font-size:10px;color:var(--mute)}
+
+  .panel{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:26px;box-shadow:var(--shadow)}
+  .field{margin-bottom:20px}
+  .field:last-child{margin-bottom:0}
+  label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+  label .opt{font-weight:400;color:var(--mute);font-family:var(--mono);font-size:10px;margin-left:6px;letter-spacing:.04em}
+  .hint{font-size:12px;color:var(--mute);margin:-2px 0 8px}
+  input[type=text],textarea,select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:#fdfdfe;font-family:inherit;font-size:14px;color:var(--ink);transition:border-color .15s}
+  input[type=text]:focus,textarea:focus,select:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--accent-soft)}
+  textarea{resize:vertical;min-height:96px;line-height:1.5}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:700px){.row{grid-template-columns:1fr}}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .chip{border:1px solid var(--line);background:#fbfcfd;border-radius:20px;padding:4px 11px;font-size:12px;color:var(--slate);transition:all .14s}
+  .chip:hover{border-color:var(--accent);color:var(--accent)}
+  .chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+  .drop{border:1.5px dashed var(--line);border-radius:8px;padding:18px;text-align:center;color:var(--mute);font-size:13px;background:#fbfcfd;transition:all .15s;cursor:pointer}
+  .drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+  .drop b{color:var(--ink);font-weight:600}
+  .filechip{display:inline-flex;align-items:center;gap:8px;background:var(--accent-soft);color:var(--accent);border-radius:6px;padding:5px 10px;font-family:var(--mono);font-size:11px;margin-top:8px}
+  .filechip button{background:none;border:none;color:inherit;font-size:14px;line-height:1;padding:0}
+
+  .actions{display:flex;align-items:center;gap:12px;margin-top:24px;padding-top:22px;border-top:1px solid var(--line);flex-wrap:wrap}
+  .btn{border:1px solid var(--ink);background:var(--ink);color:#fff;padding:11px 20px;border-radius:7px;font-weight:600;font-size:14px;display:inline-flex;align-items:center;gap:9px;transition:opacity .15s}
+  .btn:hover{opacity:.87}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+  .btn.ghost:hover{border-color:var(--ink);opacity:1}
+  .btn.teal{background:var(--accent);border-color:var(--accent)}
+  .note{font-size:12px;color:var(--mute)}
+
+  .out-head{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line);background:#fbfcfd;border-radius:var(--radius) var(--radius) 0 0}
+  .out-head .ttl{font-family:var(--mono);font-size:12px;color:var(--slate)}
+  .out-body{padding:28px 32px;max-height:62vh;overflow:auto}
+  .out-body.doc{font-size:14.5px;line-height:1.65;color:var(--ink)}
+  .out-body h1,.out-body h2,.out-body h3{font-family:var(--display);letter-spacing:-.01em;margin:1.4em 0 .5em;line-height:1.25}
+  .out-body h1{font-size:24px}.out-body h2{font-size:19px}.out-body h3{font-size:16px;font-family:var(--sans);font-weight:600}
+  .out-body h1:first-child,.out-body h2:first-child{margin-top:0}
+  .out-body p{margin:0 0 .9em}
+  .out-body ul,.out-body ol{margin:0 0 .9em;padding-left:1.3em}
+  .out-body li{margin-bottom:.3em}
+  .out-body strong{font-weight:600}
+  .out-body code{font-family:var(--mono);font-size:.88em;background:#f2f4f6;padding:1px 5px;border-radius:4px}
+  .out-body hr{border:none;border-top:1px solid var(--line);margin:1.6em 0}
+  .out-body table{width:100%;border-collapse:collapse;font-size:12.5px;margin:0 0 1.2em}
+  .out-body th{background:#f4f6f8;text-align:left;font-weight:600;padding:8px 10px;border:1px solid var(--line);font-size:11.5px}
+  .out-body td{padding:8px 10px;border:1px solid var(--line);vertical-align:top;color:var(--slate)}
+  .out-body blockquote{border-left:2px solid var(--accent);margin:0 0 1em;padding:2px 0 2px 14px;color:var(--slate)}
+  .cursor::after{content:"▍";color:var(--accent);animation:blink 1s steps(2) infinite}
+  @keyframes blink{50%{opacity:0}}
+
+  .empty{padding:70px 24px;text-align:center;color:var(--mute)}
+  .empty .g{width:44px;height:44px;margin:0 auto 16px;border:1px solid var(--line);border-radius:8px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
+  .empty .g i{border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .empty p{margin:0;font-size:14px}
+  .empty small{font-family:var(--mono);font-size:11px;color:#b3bac4}
+
+  .err{background:var(--amber-soft);border:1px solid #f0dcb4;color:#7a4d0b;padding:12px 14px;border-radius:7px;font-size:13px;margin-bottom:16px}
+  .err b{display:block;margin-bottom:2px}
+  .ok-banner{background:var(--accent-soft);border:1px solid #bfe0dc;color:#0b5c57;padding:12px 14px;border-radius:7px;font-size:13px;margin-bottom:16px}
+
+  .sources{border-top:1px solid var(--line);padding:14px 18px;background:#fbfcfd;font-size:12px}
+  .sources b{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);display:block;margin-bottom:6px}
+  .sources ul{margin:0;padding-left:1.1em}
+  .sources li{margin-bottom:2px;word-break:break-all}
+
+  .layout{display:grid;grid-template-columns:minmax(0,420px) minmax(0,1fr);gap:24px;align-items:start}
+  @media(max-width:1000px){.layout{grid-template-columns:1fr}}
+  .sticky{position:sticky;top:78px}
+  @media(max-width:1000px){.sticky{position:static}}
+  footer{border-top:1px solid var(--line);margin-top:60px;padding:26px 0;color:var(--mute);font-size:12px;display:flex;gap:16px;flex-wrap:wrap}
+  footer .mono{font-family:var(--mono);font-size:11px}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <div class="brand">
+      <div class="mark"><i></i><i></i><i></i><i></i></div>
+      ITAuditVault <span class="sub">IT Audit AI</span>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab" id="tabGenerate" role="tab" aria-selected="true">Generate</button>
+      <button class="tab" id="tabStudio" role="tab" aria-selected="false">Skill Studio</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="status" id="status"><span class="dot" id="statusDot"></span><span id="statusText">checking…</span></div>
+  </div>
+</header>
+
+<main>
+  <!-- ============ GENERATE VIEW ============ -->
+  <section class="view" id="view-generate">
+    <section class="hero">
+      <div class="hero-grid">
+        <div>
+          <div class="eyebrow">Risk → Control → Test → Conclusion</div>
+          <h1>The IT audit assistant, drafted to <em>workpaper standard</em>.</h1>
+          <p class="lede">Generate risk and control matrices, audit programs, engagement memos, RFIs, and reports for any platform, framework, or standard — grounded in real control references and test procedures. Plus resume and interview prep for auditors.</p>
+          <button class="btn" onclick="document.getElementById('pick').scrollIntoView({behavior:'smooth'})">Start an artifact →</button>
+        </div>
+        <div class="matrix" aria-hidden="true">
+          <div class="matrix-head"><b>ITGC · Risk &amp; Control Matrix</b><em>26-014</em></div>
+          <table class="mx">
+            <thead><tr><th>Ref</th><th>Control</th><th>Risk</th><th>Result</th></tr></thead>
+            <tbody>
+              <tr class="reveal"><td class="ref">IT5.04</td><td>Password parameters</td><td><span class="pill h">High</span></td><td><span class="pill ok">Effective</span></td></tr>
+              <tr class="reveal"><td class="ref">IT6.07</td><td>Terminated access</td><td><span class="pill h">High</span></td><td><span class="pill h">Exception</span></td></tr>
+              <tr class="reveal"><td class="ref">IT8.04</td><td>Change testing</td><td><span class="pill m">Med</span></td><td><span class="pill ok">Effective</span></td></tr>
+              <tr class="reveal"><td class="ref">IT3.06</td><td>Restore testing</td><td><span class="pill m">Med</span></td><td><span class="pill ok">Effective</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="pick" style="margin-bottom:40px">
+      <div class="sec-head"><h2>Choose an artifact</h2><p>What are you producing?</p></div>
+      <div class="groups" id="groups"></div>
+    </section>
+
+    <section class="layout">
+      <div class="sticky">
+        <div class="panel">
+          <div class="sec-head" style="margin-bottom:18px"><h2 style="font-size:19px" id="cfgTitle">Configure</h2></div>
+          <div id="errBox"></div>
+          <form id="cfg" onsubmit="return false"><div id="dynFields"></div></form>
+          <div class="actions">
+            <button class="btn" id="genBtn" disabled>Generate</button>
+            <button class="btn ghost" id="clearBtn" type="button">Reset</button>
+            <span class="note" id="cfgNote">Pick an artifact above</span>
+          </div>
+        </div>
+      </div>
+      <div class="panel" style="padding:0;overflow:hidden">
+        <div class="out-head">
+          <span class="ttl" id="outTitle">output / awaiting input</span>
+          <div class="spacer" style="flex:1"></div>
+          <button class="btn ghost" id="copyBtn" style="padding:6px 12px;font-size:12.5px" disabled>Copy</button>
+          <button class="btn ghost" id="dlBtn" style="padding:6px 12px;font-size:12.5px" disabled>Download .md</button>
+        </div>
+        <div id="outWrap">
+          <div class="empty"><div class="g"><i></i><i></i><i></i><i></i></div><p>Your artifact will appear here.</p><small>select artifact · configure · generate</small></div>
+        </div>
+      </div>
+    </section>
+  </section>
+
+  <!-- ============ SKILL STUDIO VIEW ============ -->
+  <section class="view" id="view-studio" hidden>
+    <section class="hero" style="padding:48px 0 32px">
+      <div class="eyebrow">Self-improving knowledge base</div>
+      <h1>Skill Studio — the audit skill that <em>improves itself</em>.</h1>
+      <p class="lede">Browse the 22-domain IT Audit reference library that grounds every draft. Research authoritative public sources — NIST, ISO, PCI SSC, AICPA, CIS, vendor docs — to expand a domain or add a new one. Approved references are written back into the skill and used immediately.</p>
+    </section>
+
+    <section class="layout">
+      <div class="sticky">
+        <div class="panel">
+          <div class="sec-head" style="margin-bottom:18px"><h2 style="font-size:19px">Research &amp; improve</h2></div>
+          <div id="studioErr"></div>
+          <div class="field">
+            <label for="skTarget">Reference to improve <span class="opt">or add new</span></label>
+            <div class="hint">Pick an existing domain to strengthen it, or choose “New reference…” to add one.</div>
+            <select id="skTarget"></select>
+          </div>
+          <div class="field" id="newNameField" hidden>
+            <label for="skName">New reference name <span class="opt">slug</span></label>
+            <div class="hint">Lowercase letters, digits, hyphens — e.g. <code>kubernetes-audit</code>. Becomes <code>&lt;name&gt;.md</code>.</div>
+            <input type="text" id="skName" placeholder="e.g. kubernetes-audit" />
+          </div>
+          <div class="field" id="topicField" hidden>
+            <label for="skTopic">Topic / title</label>
+            <input type="text" id="skTopic" placeholder="e.g. Kubernetes & Container Platform Audit" />
+          </div>
+          <div class="field">
+            <label for="skInstr">Instructions <span class="opt">optional</span></label>
+            <div class="hint">What to emphasize — frameworks to map, sections to add, depth.</div>
+            <textarea id="skInstr" placeholder="e.g. Map to CIS Kubernetes Benchmark and NIST SP 800-190; include RBAC, admission control, secrets, and audit-logging test steps with kubectl commands."></textarea>
+          </div>
+          <div class="actions">
+            <button class="btn teal" id="researchBtn">Research &amp; draft</button>
+            <button class="btn" id="saveBtn" disabled>Save to skill</button>
+            <span class="note" id="studioNote"></span>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top:20px">
+          <div class="sec-head" style="margin-bottom:14px"><h2 style="font-size:17px">Library</h2><p id="libCount"></p></div>
+          <div class="cards" id="skillGrid" style="grid-template-columns:1fr"></div>
+        </div>
+      </div>
+
+      <div class="panel" style="padding:0;overflow:hidden">
+        <div class="out-head">
+          <span class="ttl" id="studioOutTitle">reference / preview</span>
+          <div class="spacer" style="flex:1"></div>
+          <button class="btn ghost" id="skCopyBtn" style="padding:6px 12px;font-size:12.5px" disabled>Copy</button>
+          <button class="btn ghost" id="skDlBtn" style="padding:6px 12px;font-size:12.5px" disabled>Download .md</button>
+        </div>
+        <div id="studioOutWrap">
+          <div class="empty"><div class="g"><i></i><i></i><i></i><i></i></div><p>Pick a reference to read it, or research a new draft.</p><small>browse · research · save</small></div>
+        </div>
+        <div id="studioSources"></div>
+      </div>
+    </section>
+  </section>
+</main>
+
+<footer>
+  <span class="mono">ITAuditVault</span>
+  <span>Drafts require auditor review. Generated content does not replace professional judgment, independence, or evidence.</span>
+</footer>
+
+<script>
+/* ============================================================
+   ITAuditVault — front end
+   ============================================================ */
+
+/* ---------- artifact catalog ---------- */
+const CATALOG = [
+  { group:'Engagement documents', note:'The written deliverables of an engagement',
+    items:[
+      {id:'announcement', ref:'DOC-01', name:'Audit announcement memo', desc:'Notify the auditee: purpose, objective, scope, approach, team, timeline.', fmt:'Word-style memo'},
+      {id:'planning',     ref:'DOC-02', name:'Audit planning memo',      desc:'Background, risk assessment, scope, approach, sampling, milestones.', fmt:'Planning document'},
+      {id:'rfi',          ref:'DOC-03', name:'Request for information',  desc:'Evidence/PBC request list tied to each control, with owners and status.', fmt:'Table / tracker'},
+      {id:'observation',  ref:'DOC-04', name:'Audit observation memo',   desc:'Findings in Condition · Criterion · Cause · Effect · Recommendation.', fmt:'Findings memo'},
+      {id:'report',       ref:'DOC-05', name:'Audit report',             desc:'Executive summary, opinion, scope, detailed findings, action plans.', fmt:'Full report'},
+    ]},
+  { group:'Workpapers', note:'Tabular testing artifacts',
+    items:[
+      {id:'rcm',     ref:'WP-01', name:'Risk & control matrix', desc:'Objectives, risks, control activities, type/nature/risk, framework mapping.', fmt:'Matrix (markdown table)'},
+      {id:'program', ref:'WP-02', name:'Detailed audit program', desc:'Per control: Interview → Test of control → Conclusion, with evidence/IPE.', fmt:'Test program'},
+      {id:'walkthrough', ref:'WP-03', name:'Walkthrough / TOD',  desc:'Design-effectiveness walkthrough narrative and design conclusion.', fmt:'Narrative'},
+      {id:'gap',     ref:'WP-04', name:'Compliance gap assessment', desc:'Requirement-by-requirement status, gaps, and remediation plan.', fmt:'Gap matrix'},
+    ]},
+  { group:'Career tools', note:'For the auditor, not the audit',
+    items:[
+      {id:'interview', ref:'CT-01', name:'Interview questions & answers', desc:'Tailored Q&A from a job description and (optionally) your resume.', fmt:'Prep pack'},
+      {id:'resume',    ref:'CT-02', name:'Resume / CV',                   desc:'An IT-audit resume targeted at a specific job description.', fmt:'Resume'},
+    ]},
+];
+
+const SUGGEST = {
+  platform:['Oracle EBS','SAP S/4HANA','Active Directory / Windows','Mainframe (z/OS, RACF)','Oracle Database','SQL Server','Linux / Unix','AWS','Azure','GCP','VMware','Firewall / Network','SIEM'],
+  framework:['SOX ITGC','SOC 2 (Trust Services Criteria)','SOC 1 (ICFR)','PCI DSS v4.0','NIST CSF','NIST SP 800-53','ISO/IEC 27001','COBIT','CMMC (800-171)','FedRAMP','HIPAA Security Rule','NIST AI RMF / ISO 42001','HITRUST'],
+};
+
+const F = {
+  scope: {k:'scope', label:'Scope & systems', hint:'What is being audited? Name the applications, databases, OS, and environment.', type:'textarea', ph:'e.g. Oracle EBS Financials on Linux, Oracle 19c database, Active Directory for authentication.'},
+  platform:{k:'platform', label:'Platform / technology', type:'text', chips:'platform', ph:'e.g. Oracle EBS, mainframe (RACF), AWS'},
+  framework:{k:'framework', label:'Framework / standard', type:'text', chips:'framework', ph:'e.g. SOX ITGC, SOC 2, PCI DSS v4.0'},
+  entity:{k:'entity', label:'Organization', type:'text', opt:true, ph:'e.g. Northwind Financial Services'},
+  period:{k:'period', label:'Audit period', type:'text', opt:true, ph:'e.g. Jan 1 – Dec 31, 2026'},
+  auditRef:{k:'auditRef', label:'Audit reference', type:'text', opt:true, ph:'e.g. 26-014'},
+  domains:{k:'domains', label:'Control domains to cover', type:'textarea', opt:true, hint:'Leave blank to use the standard domains for the framework.', ph:'e.g. logical access, change management, computer operations'},
+  findings:{k:'findings', label:'Findings / exceptions observed', type:'textarea', hint:'Describe what you found. One per line is fine.', ph:'e.g. 3 of 25 sampled terminations retained active access beyond the 24-hour SLA.'},
+  opinion:{k:'opinion', label:'Overall opinion', type:'select', opt:true, options:['(let the draft suggest)','Good','Satisfactory','Needs Improvement','Not Satisfactory','No Opinion']},
+  jd:{k:'jd', label:'Job description', type:'textarea', hint:'Paste the JD, or upload a file below.', ph:'Paste the full job description…', upload:'jdFile'},
+  resume:{k:'resume', label:'Your resume / CV', type:'textarea', opt:true, hint:'Optional. With it, answers are tailored to your real experience and gaps are flagged.', ph:'Paste your resume…', upload:'resumeFile'},
+  resumeSrc:{k:'resume', label:'Your background', type:'textarea', hint:'Paste your current resume, or describe your experience, tools, and certifications.', ph:'Roles, years, audits performed, platforms, certifications…', upload:'resumeFile'},
+  notes:{k:'notes', label:'Additional context', type:'textarea', opt:true, hint:'Anything else the draft should reflect.', ph:'e.g. First-year SOX audit; prior finding on access recertification.'},
+};
+
+const SPEC = {
+  announcement:[F.scope,F.framework,F.entity,F.period,F.auditRef,F.notes],
+  planning:    [F.scope,F.framework,F.entity,F.period,F.auditRef,F.domains,F.notes],
+  rfi:         [F.scope,F.framework,F.platform,F.period,F.notes],
+  observation: [F.scope,F.framework,F.findings,F.entity,F.notes],
+  report:      [F.scope,F.framework,F.findings,F.opinion,F.entity,F.period,F.auditRef],
+  rcm:         [F.platform,F.framework,F.scope,F.domains,F.notes],
+  program:     [F.platform,F.framework,F.scope,F.domains,F.notes],
+  walkthrough: [F.platform,F.framework,F.scope,F.notes],
+  gap:         [F.framework,F.scope,F.platform,F.notes],
+  interview:   [F.jd,F.resume,F.notes],
+  resume:      [F.jd,F.resumeSrc,F.notes],
+};
+
+let selected = null;
+const state = {};
+let liveMode = false;
+
+/* ---------- shared helpers ---------- */
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+
+/* read an SSE stream from a fetch response, calling onText per chunk; returns final frame obj */
+async function readSSE(res, onText){
+  if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e.error||`Server returned ${res.status}`); }
+  const reader=res.body.getReader(); const dec=new TextDecoder(); let buf=''; let last={};
+  while(true){
+    const {done,value}=await reader.read(); if(done) break;
+    buf+=dec.decode(value,{stream:true});
+    const lines=buf.split('\n'); buf=lines.pop();
+    for(const line of lines){
+      if(!line.startsWith('data:')) continue;
+      const payload=line.slice(5).trim(); if(!payload) continue;
+      let j; try{ j=JSON.parse(payload); }catch(_){ continue; }
+      if(j.error) throw new Error(j.error);
+      if(j.text) onText(j.text);
+      last=j;
+    }
+  }
+  return last;
+}
+
+/* ---------- tiny markdown renderer ---------- */
+function md(src){
+  const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  const lines=esc(src).split('\n');
+  let out=[],i=0;
+  const inline=s=>s
+    .replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\n]+)\*/g,'$1<em>$2</em>');
+  while(i<lines.length){
+    const l=lines[i];
+    if(/^\s*\|.*\|\s*$/.test(l) && i+1<lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i+1])){
+      const head=l.trim().slice(1,-1).split('|').map(s=>s.trim());
+      i+=2; const rows=[];
+      while(i<lines.length && /^\s*\|.*\|\s*$/.test(lines[i])){ rows.push(lines[i].trim().slice(1,-1).split('|').map(s=>s.trim())); i++; }
+      out.push(`<table><thead><tr>${head.map(h=>`<th>${inline(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${inline(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`);
+      continue;
+    }
+    let m;
+    if((m=l.match(/^(#{1,4})\s+(.*)$/))){ const n=m[1].length; out.push(`<h${Math.min(n,3)}>${inline(m[2])}</h${Math.min(n,3)}>`); i++; continue; }
+    if(/^\s*(---|___|\*\*\*)\s*$/.test(l)){ out.push('<hr>'); i++; continue; }
+    if(/^>\s?/.test(l)){ const q=[]; while(i<lines.length&&/^>\s?/.test(lines[i])){q.push(lines[i].replace(/^>\s?/,''));i++;} out.push(`<blockquote>${inline(q.join(' '))}</blockquote>`); continue; }
+    if(/^\s*[-*+]\s+/.test(l)){ const it=[]; while(i<lines.length&&/^\s*[-*+]\s+/.test(lines[i])){it.push(lines[i].replace(/^\s*[-*+]\s+/,''));i++;} out.push(`<ul>${it.map(x=>`<li>${inline(x)}</li>`).join('')}</ul>`); continue; }
+    if(/^\s*\d+[.)]\s+/.test(l)){ const it=[]; while(i<lines.length&&/^\s*\d+[.)]\s+/.test(lines[i])){it.push(lines[i].replace(/^\s*\d+[.)]\s+/,''));i++;} out.push(`<ol>${it.map(x=>`<li>${inline(x)}</li>`).join('')}</ol>`); continue; }
+    if(!l.trim()){ i++; continue; }
+    const para=[]; while(i<lines.length && lines[i].trim() && !/^(#{1,4}\s|>|\s*[-*+]\s|\s*\d+[.)]\s|\s*\|)/.test(lines[i])){ para.push(lines[i]); i++; }
+    out.push(`<p>${inline(para.join(' '))}</p>`);
+  }
+  return out.join('\n');
+}
+function downloadMd(text, base){
+  const blob=new Blob([text],{type:'text/markdown'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`${base}-${new Date().toISOString().slice(0,10)}.md`;
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+/* ---------- tab switching ---------- */
+const tabGen=document.getElementById('tabGenerate'), tabStudio=document.getElementById('tabStudio');
+function showView(which){
+  const gen=which==='generate';
+  tabGen.setAttribute('aria-selected', gen?'true':'false');
+  tabStudio.setAttribute('aria-selected', gen?'false':'true');
+  document.getElementById('view-generate').hidden=!gen;
+  document.getElementById('view-studio').hidden=gen;
+  if(!gen && !studioLoaded) loadSkills();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+tabGen.onclick=()=>showView('generate');
+tabStudio.onclick=()=>showView('studio');
+
+/* ============================================================
+   GENERATE
+   ============================================================ */
+const groupsEl = document.getElementById('groups');
+CATALOG.forEach(g=>{
+  const sec=document.createElement('div');
+  sec.innerHTML = `<div class="group-label"><span>${g.group}</span><span>${g.note}</span></div>`;
+  const grid=document.createElement('div'); grid.className='cards';
+  g.items.forEach(it=>{
+    const b=document.createElement('button');
+    b.className='card'; b.type='button'; b.setAttribute('aria-pressed','false'); b.dataset.id=it.id;
+    b.innerHTML=`<div class="ref">${it.ref}</div><h3>${it.name}</h3><p>${it.desc}</p><div class="fmt">${it.fmt}</div>`;
+    b.onclick=()=>selectArtifact(it);
+    grid.appendChild(b);
+  });
+  sec.appendChild(grid); groupsEl.appendChild(sec);
+});
+
+function selectArtifact(it){
+  selected=it;
+  document.querySelectorAll('#groups .card').forEach(c=>c.setAttribute('aria-pressed', c.dataset.id===it.id ? 'true':'false'));
+  document.getElementById('cfgTitle').textContent=it.name;
+  document.getElementById('cfgNote').textContent='';
+  buildForm(SPEC[it.id]||[]);
+  validate();
+  document.querySelector('#view-generate .layout').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function buildForm(fields){
+  const wrap=document.getElementById('dynFields'); wrap.innerHTML='';
+  fields.forEach(f=>{
+    const d=document.createElement('div'); d.className='field';
+    const opt = f.opt ? '<span class="opt">optional</span>':'';
+    let inner=`<label for="f_${f.k}">${f.label}${opt}</label>`;
+    if(f.hint) inner+=`<div class="hint">${f.hint}</div>`;
+    if(f.type==='textarea') inner+=`<textarea id="f_${f.k}" placeholder="${f.ph||''}"></textarea>`;
+    else if(f.type==='select') inner+=`<select id="f_${f.k}">${f.options.map(o=>`<option>${o}</option>`).join('')}</select>`;
+    else inner+=`<input type="text" id="f_${f.k}" placeholder="${f.ph||''}" />`;
+    if(f.chips) inner+=`<div class="chips" data-for="${f.k}">${SUGGEST[f.chips].map(s=>`<button type="button" class="chip" aria-pressed="false">${s}</button>`).join('')}</div>`;
+    if(f.upload) inner+=`<div class="drop" data-target="${f.k}">Drop a file or <b>browse</b> — .txt, .md, .pdf, .docx</div><input type="file" hidden id="u_${f.k}" accept=".txt,.md,.pdf,.docx" /><div id="chip_${f.k}"></div>`;
+    d.innerHTML=inner; wrap.appendChild(d);
+
+    const el=d.querySelector(`#f_${f.k}`);
+    el.value = state[f.k]||'';
+    el.addEventListener('input',()=>{state[f.k]=el.value;validate();});
+    if(f.type==='select') el.addEventListener('change',()=>{state[f.k]=el.value;});
+
+    d.querySelectorAll('.chip').forEach(c=>c.onclick=()=>{
+      const target=d.querySelector(`#f_${f.k}`);
+      const on=c.getAttribute('aria-pressed')==='true';
+      c.setAttribute('aria-pressed', on?'false':'true');
+      const vals=[...d.querySelectorAll('.chip[aria-pressed="true"]')].map(x=>x.textContent);
+      target.value=vals.join(', '); state[f.k]=target.value; validate();
+    });
+
+    if(f.upload) wireUpload(d, f.k);
+  });
+}
+
+function wireUpload(scope, key){
+  const drop=scope.querySelector('.drop'), input=scope.querySelector(`#u_${key}`), chip=scope.querySelector(`#chip_${key}`);
+  drop.onclick=()=>input.click();
+  drop.ondragover=e=>{e.preventDefault();drop.classList.add('over')};
+  drop.ondragleave=()=>drop.classList.remove('over');
+  drop.ondrop=e=>{e.preventDefault();drop.classList.remove('over');if(e.dataTransfer.files[0])handle(e.dataTransfer.files[0])};
+  input.onchange=()=>{if(input.files[0])handle(input.files[0])};
+  async function handle(file){
+    chip.innerHTML=`<div class="filechip">reading ${escapeHtml(file.name)}…</div>`;
+    try{
+      let text='';
+      if(/\.(txt|md)$/i.test(file.name)){ text=await file.text(); }
+      else{
+        const fd=new FormData(); fd.append('file',file);
+        const r=await fetch('/api/extract',{method:'POST',body:fd});
+        if(!r.ok) throw new Error('Could not read that file. Paste the text instead.');
+        text=(await r.json()).text||'';
+      }
+      const ta=scope.querySelector(`#f_${key}`);
+      ta.value=text; state[key]=text; validate();
+      chip.innerHTML=`<div class="filechip">${escapeHtml(file.name)} · ${text.length.toLocaleString()} chars <button title="remove" onclick="this.closest('.filechip').remove()">×</button></div>`;
+    }catch(err){
+      chip.innerHTML=`<div class="filechip" style="background:var(--amber-soft);color:var(--amber)">${escapeHtml(err.message)}</div>`;
+    }
+  }
+}
+
+function validate(){
+  const btn=document.getElementById('genBtn');
+  if(!selected){btn.disabled=true;return;}
+  const req=(SPEC[selected.id]||[]).filter(f=>!f.opt);
+  const ok=req.every(f=>(state[f.k]||'').trim().length>2);
+  btn.disabled=!ok;
+  document.getElementById('cfgNote').textContent = ok ? '' : 'Fill the required fields';
+}
+
+const outWrap=document.getElementById('outWrap');
+let lastMarkdown='';
+
+document.getElementById('genBtn').onclick=async()=>{
+  if(!selected) return;
+  const btn=document.getElementById('genBtn'); btn.disabled=true; btn.textContent='Generating…';
+  document.getElementById('errBox').innerHTML='';
+  document.getElementById('outTitle').textContent=`output / ${selected.id}`;
+  outWrap.innerHTML=`<div class="out-body doc cursor" id="stream"></div>`;
+  const stream=document.getElementById('stream');
+  lastMarkdown='';
+  try{
+    const res=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({artifact:selected.id, artifactName:selected.name, inputs:state})});
+    await readSSE(res, t=>{ lastMarkdown+=t; stream.innerHTML=md(lastMarkdown); stream.scrollTop=stream.scrollHeight; });
+    stream.classList.remove('cursor');
+    if(!lastMarkdown.trim()) throw new Error('No content returned. Check the server logs.');
+    document.getElementById('copyBtn').disabled=false;
+    document.getElementById('dlBtn').disabled=false;
+  }catch(err){
+    document.getElementById('errBox').innerHTML=`<div class="err"><b>Generation failed</b>${escapeHtml(err.message)}</div>`;
+    outWrap.innerHTML=`<div class="empty"><div class="g"><i></i><i></i><i></i><i></i></div><p>Nothing generated.</p><small>see the message on the left</small></div>`;
+  }finally{
+    btn.disabled=false; btn.textContent='Generate'; validate();
+  }
+};
+document.getElementById('clearBtn').onclick=()=>{
+  Object.keys(state).forEach(k=>delete state[k]);
+  if(selected) buildForm(SPEC[selected.id]||[]);
+  validate();
+};
+document.getElementById('copyBtn').onclick=async()=>{
+  await navigator.clipboard.writeText(lastMarkdown);
+  const b=document.getElementById('copyBtn'); b.textContent='Copied'; setTimeout(()=>b.textContent='Copy',1400);
+};
+document.getElementById('dlBtn').onclick=()=>downloadMd(lastMarkdown, selected.id);
+
+/* ============================================================
+   SKILL STUDIO
+   ============================================================ */
+let studioLoaded=false;
+let skillList=[];
+let studioMarkdown='';
+let studioBase='reference';
+
+const skTarget=document.getElementById('skTarget');
+const newNameField=document.getElementById('newNameField');
+const topicField=document.getElementById('topicField');
+const studioOutWrap=document.getElementById('studioOutWrap');
+const studioSources=document.getElementById('studioSources');
+
+async function loadSkills(){
+  studioLoaded=true;
+  try{
+    const r=await fetch('/api/skills'); const j=await r.json();
+    skillList=j.skills||[];
+    document.getElementById('libCount').textContent=`${skillList.length} references`;
+    // dropdown
+    skTarget.innerHTML='<option value="__new__">＋ New reference…</option>'
+      + skillList.map(s=>`<option value="${s.name}">${escapeHtml(s.title)}</option>`).join('');
+    onTargetChange();
+    // grid
+    const grid=document.getElementById('skillGrid');
+    grid.innerHTML='';
+    skillList.forEach(s=>{
+      const b=document.createElement('button');
+      b.className='card'; b.type='button';
+      b.innerHTML=`<div class="ref">${escapeHtml(s.name)} · ${s.words.toLocaleString()} words</div><h3>${escapeHtml(s.title)}</h3><p>${escapeHtml(s.summary||'')}</p>`;
+      b.onclick=()=>viewReference(s.name);
+      grid.appendChild(b);
+    });
+  }catch(err){
+    document.getElementById('studioErr').innerHTML=`<div class="err"><b>Could not load the skill library</b>${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function onTargetChange(){
+  const isNew = skTarget.value==='__new__';
+  newNameField.hidden=!isNew;
+  topicField.hidden=!isNew;
+}
+skTarget.onchange=onTargetChange;
+
+async function viewReference(name){
+  studioOutWrap.innerHTML=`<div class="out-body doc"><p class="note">loading…</p></div>`;
+  studioSources.innerHTML='';
+  try{
+    const r=await fetch('/api/skills/'+encodeURIComponent(name)); const j=await r.json();
+    studioMarkdown=j.markdown||''; studioBase=name;
+    document.getElementById('studioOutTitle').textContent=`reference / ${name}`;
+    studioOutWrap.innerHTML=`<div class="out-body doc">${md(studioMarkdown)}</div>`;
+    document.getElementById('skCopyBtn').disabled=false;
+    document.getElementById('skDlBtn').disabled=false;
+    // point the improver at this reference
+    skTarget.value=name; onTargetChange();
+  }catch(err){
+    studioOutWrap.innerHTML=`<div class="empty"><p>Could not load ${escapeHtml(name)}.</p></div>`;
+  }
+}
+
+document.getElementById('researchBtn').onclick=async()=>{
+  const isNew = skTarget.value==='__new__';
+  const body = isNew
+    ? { topic:(document.getElementById('skTopic').value||'').trim(), name:(document.getElementById('skName').value||'').trim(), instructions:document.getElementById('skInstr').value }
+    : { name:skTarget.value, instructions:document.getElementById('skInstr').value };
+
+  document.getElementById('studioErr').innerHTML='';
+  if(isNew && !body.topic && !body.name){
+    document.getElementById('studioErr').innerHTML=`<div class="err">Enter a topic (and a slug) for the new reference.</div>`;
+    return;
+  }
+  const btn=document.getElementById('researchBtn'); btn.disabled=true; btn.textContent = liveMode?'Researching…':'Drafting…';
+  document.getElementById('saveBtn').disabled=true;
+  document.getElementById('studioNote').textContent = liveMode ? 'Searching public sources…' : 'Demo draft…';
+  studioSources.innerHTML='';
+  document.getElementById('studioOutTitle').textContent = `reference / ${isNew ? (body.name||'new') : body.name} (draft)`;
+  studioOutWrap.innerHTML=`<div class="out-body doc cursor" id="skStream"></div>`;
+  const stream=document.getElementById('skStream');
+  studioMarkdown='';
+  studioBase = isNew ? (body.name||'new-reference') : body.name;
+
+  try{
+    const res=await fetch('/api/skills/improve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const last=await readSSE(res, t=>{ studioMarkdown+=t; stream.innerHTML=md(studioMarkdown); stream.scrollTop=stream.scrollHeight; });
+    stream.classList.remove('cursor');
+    if(!studioMarkdown.trim()) throw new Error('No draft returned. Check the server logs.');
+    document.getElementById('skCopyBtn').disabled=false;
+    document.getElementById('skDlBtn').disabled=false;
+    // enable save; if a new reference, ensure we have a slug
+    document.getElementById('saveBtn').disabled=false;
+    document.getElementById('studioNote').textContent='Review the draft, then save it to the skill.';
+    const sources=(last&&last.sources)||[];
+    if(sources.length){
+      studioSources.innerHTML=`<div class="sources"><b>Sources</b><ul>${sources.map(u=>`<li><a href="${escapeHtml(u)}" target="_blank" rel="noopener">${escapeHtml(u)}</a></li>`).join('')}</ul></div>`;
+    }
+  }catch(err){
+    document.getElementById('studioErr').innerHTML=`<div class="err"><b>Research failed</b>${escapeHtml(err.message)}</div>`;
+    studioOutWrap.innerHTML=`<div class="empty"><p>Nothing drafted.</p><small>see the message on the left</small></div>`;
+  }finally{
+    btn.disabled=false; btn.textContent='Research & draft';
+  }
+};
+
+document.getElementById('saveBtn').onclick=async()=>{
+  const isNew = skTarget.value==='__new__';
+  let name = isNew ? (document.getElementById('skName').value||'').trim() : skTarget.value;
+  if(isNew && !name){
+    // derive a slug from the topic
+    name = (document.getElementById('skTopic').value||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,50);
+    document.getElementById('skName').value=name;
+  }
+  document.getElementById('studioErr').innerHTML='';
+  if(!/^[a-z0-9][a-z0-9-]{1,60}$/.test(name)){
+    document.getElementById('studioErr').innerHTML=`<div class="err">Enter a valid slug (lowercase letters, digits, hyphens) for the reference name.</div>`;
+    return;
+  }
+  if(!studioMarkdown.trim()){ return; }
+  const btn=document.getElementById('saveBtn'); btn.disabled=true; btn.textContent='Saving…';
+  try{
+    const r=await fetch('/api/skills/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name, markdown:studioMarkdown})});
+    const j=await r.json();
+    if(!r.ok) throw new Error(j.error||`Server returned ${r.status}`);
+    document.getElementById('studioErr').innerHTML=`<div class="ok-banner">Saved <b>${escapeHtml(name)}.md</b> to the skill (${j.created?'new':'updated'}). The library now has ${j.refs} references and this content is used immediately for generation.</div>`;
+    studioLoaded=false; await loadSkills(); // refresh library + dropdown
+    skTarget.value=name; onTargetChange();
+  }catch(err){
+    document.getElementById('studioErr').innerHTML=`<div class="err"><b>Save failed</b>${escapeHtml(err.message)}</div>`;
+  }finally{
+    btn.disabled=false; btn.textContent='Save to skill';
+  }
+};
+
+document.getElementById('skCopyBtn').onclick=async()=>{
+  await navigator.clipboard.writeText(studioMarkdown);
+  const b=document.getElementById('skCopyBtn'); b.textContent='Copied'; setTimeout(()=>b.textContent='Copy',1400);
+};
+document.getElementById('skDlBtn').onclick=()=>downloadMd(studioMarkdown, studioBase);
+
+/* ---------- health check ---------- */
+(async()=>{
+  const dot=document.getElementById('statusDot'), txt=document.getElementById('statusText');
+  try{
+    const r=await fetch('/api/health'); const j=await r.json();
+    liveMode=!!j.live;
+    dot.className='dot '+(liveMode?'live':'demo');
+    txt.textContent = liveMode ? `live · claude · ${j.refs} refs` : `demo mode · ${j.refs} refs`;
+  }catch{ dot.className='dot demo'; txt.textContent='server offline'; }
+})();
+</script>
+</body>
+</html>
