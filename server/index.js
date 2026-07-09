@@ -27,7 +27,10 @@ import crypto from 'node:crypto';
 import rateLimit from 'express-rate-limit';
 import { marked } from 'marked';
 import ExcelJS from 'exceljs';
-import HTMLtoDOCX from 'html-to-docx';
+import {
+  Document, Packer, Paragraph, TextRun, HeadingLevel,
+  Table, TableRow, TableCell, WidthType, BorderStyle, AlignmentType,
+} from 'docx';
 import Anthropic from '@anthropic-ai/sdk';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -35,7 +38,7 @@ const ROOT = path.resolve(__dirname, '..');
 const SKILL_DIR = path.join(ROOT, '.claude', 'skills', 'it-auditor');
 const REF_DIR = path.join(SKILL_DIR, 'references');
 const PORT = process.env.PORT || 3000;
-const MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
+const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 const API_KEY = process.env.ANTHROPIC_API_KEY;
 
 const app = express();
@@ -483,7 +486,9 @@ async function streamClaude({ send, system, user, tools, maxTokens = 8000 }) {
   const params = {
     model: MODEL,
     max_tokens: maxTokens,
-    system,
+    // Cache the large, reference-laden system prompt so repeat generations with the
+    // same artifact/platform/framework reuse it — big latency + cost win.
+    system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: user }],
   };
   if (tools) params.tools = tools;
@@ -499,7 +504,9 @@ async function streamClaude({ send, system, user, tools, maxTokens = 8000 }) {
     USAGE.in += u.input_tokens || 0;
     USAGE.out += u.output_tokens || 0;
     USAGE.calls += 1;
-    console.log(`  usage: in=${u.input_tokens ?? '?'} out=${u.output_tokens ?? '?'} · session total in=${USAGE.in} out=${USAGE.out} over ${USAGE.calls} call(s)`);
+    const cr = u.cache_read_input_tokens ?? 0;
+    const cw = u.cache_creation_input_tokens ?? 0;
+    console.log(`  usage: in=${u.input_tokens ?? '?'} out=${u.output_tokens ?? '?'} cache_read=${cr} cache_write=${cw} · session total in=${USAGE.in} out=${USAGE.out} over ${USAGE.calls} call(s)`);
   }
   return finalMsg;
 }
@@ -553,22 +560,107 @@ function extractTables(md) {
   return out;
 }
 
+/* Markdown -> Word using the `docx` library (deterministic OOXML — reliably opens in Word). */
+const HEADINGS = [null, HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3, HeadingLevel.HEADING_4];
+const CELL_BORDER = { style: BorderStyle.SINGLE, size: 4, color: '999999' };
+const CELL_BORDERS = { top: CELL_BORDER, bottom: CELL_BORDER, left: CELL_BORDER, right: CELL_BORDER };
+
+/* Convert marked inline tokens to docx TextRuns, carrying bold/italic/code styling. */
+function inlineRuns(tokens, base = {}) {
+  const runs = [];
+  const walk = (toks, style) => {
+    for (const t of toks || []) {
+      if (t.type === 'strong') walk(t.tokens, { ...style, bold: true });
+      else if (t.type === 'em') walk(t.tokens, { ...style, italics: true });
+      else if (t.type === 'codespan') runs.push(new TextRun({ text: t.text || '', font: 'Consolas', ...style }));
+      else if (t.type === 'br') runs.push(new TextRun({ break: 1 }));
+      else if (t.type === 'link') walk(t.tokens, style);
+      else if (t.type === 'text' || t.type === 'escape') {
+        if (t.tokens && t.tokens.length) walk(t.tokens, style);
+        else runs.push(new TextRun({ text: t.text || '', ...style }));
+      } else if (t.tokens && t.tokens.length) walk(t.tokens, style);
+      else if (t.text) runs.push(new TextRun({ text: t.text, ...style }));
+    }
+  };
+  walk(tokens, base);
+  if (runs.length === 0) runs.push(new TextRun({ text: '', ...base }));
+  return runs;
+}
+function cellParagraph(cell, base = {}) {
+  const toks = cell && cell.tokens && cell.tokens.length ? cell.tokens : [{ type: 'text', text: (cell && cell.text) || '' }];
+  return new Paragraph({ children: inlineRuns(toks, base) });
+}
+function tokensToDocx(tokens) {
+  const out = [];
+  for (const tk of tokens) {
+    switch (tk.type) {
+      case 'heading':
+        out.push(new Paragraph({ heading: HEADINGS[Math.min(tk.depth, 4)] || HeadingLevel.HEADING_4, children: inlineRuns(tk.tokens), spacing: { before: 160, after: 80 } }));
+        break;
+      case 'paragraph':
+        out.push(new Paragraph({ children: inlineRuns(tk.tokens), spacing: { after: 120 } }));
+        break;
+      case 'list': {
+        let idx = Number(tk.start) > 0 ? Number(tk.start) : 1;
+        for (const item of tk.items) {
+          const toks = item.tokens && item.tokens.length ? item.tokens : [{ type: 'text', text: item.text || '' }];
+          if (tk.ordered) {
+            out.push(new Paragraph({ indent: { left: 360 }, children: [new TextRun({ text: `${idx}. ` }), ...inlineRuns(toks)] }));
+            idx++;
+          } else {
+            out.push(new Paragraph({ bullet: { level: 0 }, children: inlineRuns(toks) }));
+          }
+        }
+        break;
+      }
+      case 'table': {
+        const header = new TableRow({
+          tableHeader: true,
+          children: tk.header.map(c => new TableCell({
+            shading: { fill: 'F0F0F0' }, borders: CELL_BORDERS, children: [cellParagraph(c, { bold: true })],
+          })),
+        });
+        const rows = tk.rows.map(row => new TableRow({
+          children: row.map(c => new TableCell({ borders: CELL_BORDERS, children: [cellParagraph(c)] })),
+        }));
+        out.push(new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          borders: { ...CELL_BORDERS, insideHorizontal: CELL_BORDER, insideVertical: CELL_BORDER },
+          rows: [header, ...rows],
+        }));
+        out.push(new Paragraph({ text: '', spacing: { after: 120 } }));
+        break;
+      }
+      case 'code':
+        for (const line of String(tk.text || '').split('\n')) {
+          out.push(new Paragraph({ children: [new TextRun({ text: line, font: 'Consolas', size: 18 })] }));
+        }
+        break;
+      case 'blockquote':
+        out.push(new Paragraph({ indent: { left: 360 }, children: inlineRuns(tk.tokens || [{ type: 'text', text: tk.text || '' }], { italics: true }) }));
+        break;
+      case 'hr':
+        out.push(new Paragraph({ text: '', border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: 'CCCCCC', space: 1 } } }));
+        break;
+      case 'space':
+        break;
+      default:
+        if (tk.text) out.push(new Paragraph({ children: [new TextRun({ text: String(tk.text) })] }));
+    }
+  }
+  return out;
+}
 async function markdownToDocx(md, title) {
-  const html = marked.parse(md);
-  const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    body{font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#111}
-    h1{font-size:20pt}h2{font-size:15pt}h3{font-size:12.5pt}
-    table{border-collapse:collapse;width:100%}
-    th,td{border:1px solid #999;padding:4px 6px;font-size:9.5pt;vertical-align:top}
-    th{background:#f0f0f0;text-align:left}
-    code{font-family:Consolas,monospace}
-  </style></head><body>${html}</body></html>`;
-  const buf = await HTMLtoDOCX(doc, null, {
+  const doc = new Document({
+    creator: 'ITAuditVault',
     title: title || 'ITAuditVault',
-    margins: { top: 720, right: 720, bottom: 720, left: 720 },
-    table: { row: { cantSplit: true } },
+    styles: { default: { document: { run: { font: 'Calibri', size: 22 } } } },
+    sections: [{
+      properties: { page: { margin: { top: 720, right: 720, bottom: 720, left: 720 } } },
+      children: tokensToDocx(marked.lexer(md || '')),
+    }],
   });
-  return Buffer.from(buf);
+  return await Packer.toBuffer(doc);
 }
 
 async function markdownToXlsx(md, title) {
@@ -585,16 +677,16 @@ async function markdownToXlsx(md, title) {
   const tables = extractTables(md);
   if (tables.length === 0) {
     const ws = wb.addWorksheet(name(title, 0));
-    md.split('\n').forEach(line => ws.addRow([line]));
+    String(md).split('\n').forEach(line => ws.addRow([String(line)]));
     ws.getColumn(1).width = 110;
     ws.getColumn(1).alignment = { wrapText: true, vertical: 'top' };
   } else {
     tables.forEach((t, i) => {
       const ws = wb.addWorksheet(name(t.heading || title, i));
-      const hr = ws.addRow(t.header);
+      const hr = ws.addRow(t.header.map(h => String(h ?? '')));
       hr.font = { bold: true };
       hr.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
-      t.rows.forEach(r => ws.addRow(r));
+      t.rows.forEach(r => ws.addRow(r.map(c => String(c ?? ''))));
       t.header.forEach((h, ci) => {
         let max = String(h).length;
         t.rows.forEach(r => { max = Math.max(max, String(r[ci] ?? '').length); });
@@ -700,8 +792,14 @@ app.post('/api/export', requireAuth, async (req, res) => {
       buf = Buffer.from(String(markdown), 'utf8');
       type = 'text/markdown; charset=utf-8';
     }
+    // .docx/.xlsx are ZIP packages — verify the "PK" magic so a corrupt build never
+    // reaches the browser as an unopenable file. Fail loudly instead.
+    if ((fmt === 'xlsx' || fmt === 'docx') && !(buf && buf.length > 4 && buf[0] === 0x50 && buf[1] === 0x4b)) {
+      throw new Error('Generated an invalid Office file.');
+    }
     res.setHeader('Content-Type', type);
     res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
+    res.setHeader('Content-Length', buf.length);
     res.end(buf);
   } catch (err) {
     console.error('export failed:', err);
