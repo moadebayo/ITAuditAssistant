@@ -17,6 +17,7 @@
  * terminology. The Skill Studio can research public sources and write new/updated
  * references back into that directory, so the skill improves itself over time.
  */
+import 'dotenv/config';
 import express from 'express';
 import multer from 'multer';
 import fs from 'node:fs';
