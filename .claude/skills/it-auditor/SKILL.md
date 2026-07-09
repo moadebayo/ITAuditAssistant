@@ -54,6 +54,13 @@ Core method and deliverables (read for almost any audit task):
   answers, drawing on all the domain references for technical substance. **Read this whenever the user
   wants interview prep, uploads a JD/resume for interview questions, or asks how to answer an IT-audit
   interview question.**
+- `references/gap-assessment.md` — **cross-framework gap / readiness assessment**: measure an entity's
+  risks, processes, and controls against one or more frameworks (SOC 2, ISO 27001, PCI DSS, CMMC,
+  FedRAMP, NIST CSF, COBIT, HIPAA, NIST AI RMF…). Holds the method (risk → process → control →
+  requirement → gap → remediation), a **multi-framework control crosswalk**, status & maturity scales,
+  the gap-matrix columns, and the remediation roadmap. **Read this for any "assess / benchmark / map /
+  check readiness or compliance of [entity/process/controls] against [framework]" request, and combine
+  it with each named framework/domain reference.**
 
 Domain / platform references (read the one(s) named in the task):
 - `references/sap-audit.md` — SAP ECC / S/4HANA: SoD, critical authorizations, basis, transports,
@@ -171,6 +178,10 @@ deliverables into the skill directory (`.claude/skills/it-auditor/`).
 - "NIST CSF cybersecurity audit / posture assessment" → read `nist-csf-audit.md`.
 - "CMMC audit / readiness / gap assessment / SPRS / 800-171" → read `cmmc-audit.md`.
 - "FedRAMP audit / readiness / authorization / 800-53 / 20x" → read `fedramp-audit.md`.
+- "Gap assessment / readiness / control mapping / maturity assessment of [entity/process/controls]
+  against [framework(s)]" → read `gap-assessment.md` (method + crosswalk) plus each named framework
+  reference; produce an Excel gap matrix (one sheet per framework/domain) and, if formal, a Word
+  readiness report with a summary dashboard and remediation roadmap.
 - "AI audit / AI governance / model risk / ISO 42001 / NIST AI RMF / EU AI Act / LLM controls" → read
   `ai-audit.md`.
 - "Review this SOC 2 report" → read `itac-and-ipe.md` (SOC section); check scope, period, opinion,

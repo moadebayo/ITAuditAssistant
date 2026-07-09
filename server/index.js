@@ -220,7 +220,7 @@ const BASE_REFS = {
   rcm:          ['audit-lifecycle', 'itgc', 'deliverable-templates'],
   program:      ['audit-lifecycle', 'itgc', 'deliverable-templates', 'itac-and-ipe'],
   walkthrough:  ['audit-lifecycle', 'itgc', 'itac-and-ipe'],
-  gap:          ['audit-lifecycle', 'deliverable-templates'],
+  gap:          ['audit-lifecycle', 'deliverable-templates', 'gap-assessment', 'frameworks'],
   interview:    ['interview-prep', 'audit-lifecycle', 'itgc', 'itac-and-ipe'],
   resume:       ['interview-prep', 'audit-lifecycle'],
 };
@@ -246,6 +246,7 @@ const ROUTES = [
   [/soc\s*[12]|trust services|\btsc\b|ipe|application control|\bitac\b/i, 'itac-and-ipe'],
   [/sox|itgc|icfr|general control/i,                   'itgc'],
   [/cobit|iso\s*27001|hitrust|framework|standard/i,    'frameworks'],
+  [/gap assessment|readiness|control mapping|crosswalk|maturity assessment|current[- ]state|target[- ]state/i, 'gap-assessment'],
 ];
 
 function pickRefs(artifact, inputs) {
