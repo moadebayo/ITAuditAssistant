@@ -25,6 +25,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 import rateLimit from 'express-rate-limit';
+import { marked } from 'marked';
+import ExcelJS from 'exceljs';
+import HTMLtoDOCX from 'html-to-docx';
 import Anthropic from '@anthropic-ai/sdk';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -470,6 +473,94 @@ function extractSources(finalMsg) {
 }
 
 /* ==================================================================
+   3b. Office export — Markdown → Word (.docx) / Excel (.xlsx)
+   ------------------------------------------------------------------
+   Document-style artifacts (memos, reports, prep packs) export to Word;
+   tabular artifacts (RCM, RFI, gap assessment) export to Excel. The
+   default per artifact is below; the client may override the format.
+   ================================================================== */
+const EXPORT_FMT = { rcm: 'xlsx', rfi: 'xlsx', gap: 'xlsx' };
+
+function splitTableRow(line) {
+  return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|')
+    .map(c => c.trim().replace(/\\\|/g, '|').replace(/\*\*/g, '').replace(/`/g, ''));
+}
+/* Pull every GitHub-flavoured pipe table out of the markdown, tagged with its
+   nearest preceding heading (used to name Excel worksheets). */
+function extractTables(md) {
+  const lines = md.split('\n');
+  const out = [];
+  let heading = '';
+  for (let i = 0; i < lines.length; i++) {
+    const h = lines[i].match(/^#{1,6}\s+(.*)$/);
+    if (h) { heading = h[1].trim().replace(/[*_`]/g, ''); continue; }
+    if (/^\s*\|.*\|\s*$/.test(lines[i]) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
+      const header = splitTableRow(lines[i]);
+      i += 2;
+      const rows = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { rows.push(splitTableRow(lines[i])); i++; }
+      i--;
+      out.push({ heading, header, rows });
+    }
+  }
+  return out;
+}
+
+async function markdownToDocx(md, title) {
+  const html = marked.parse(md);
+  const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+    body{font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#111}
+    h1{font-size:20pt}h2{font-size:15pt}h3{font-size:12.5pt}
+    table{border-collapse:collapse;width:100%}
+    th,td{border:1px solid #999;padding:4px 6px;font-size:9.5pt;vertical-align:top}
+    th{background:#f0f0f0;text-align:left}
+    code{font-family:Consolas,monospace}
+  </style></head><body>${html}</body></html>`;
+  const buf = await HTMLtoDOCX(doc, null, {
+    title: title || 'ITAuditVault',
+    margins: { top: 720, right: 720, bottom: 720, left: 720 },
+    table: { row: { cantSplit: true } },
+  });
+  return Buffer.from(buf);
+}
+
+async function markdownToXlsx(md, title) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'ITAuditVault';
+  const used = new Set();
+  const name = (base, i) => {
+    let n = String(base || `Sheet ${i + 1}`).replace(/[\\/?*[\]:]/g, ' ').trim().slice(0, 28) || `Sheet ${i + 1}`;
+    let out = n, k = 2;
+    while (used.has(out.toLowerCase())) out = `${n} ${k++}`.slice(0, 31);
+    used.add(out.toLowerCase());
+    return out;
+  };
+  const tables = extractTables(md);
+  if (tables.length === 0) {
+    const ws = wb.addWorksheet(name(title, 0));
+    md.split('\n').forEach(line => ws.addRow([line]));
+    ws.getColumn(1).width = 110;
+    ws.getColumn(1).alignment = { wrapText: true, vertical: 'top' };
+  } else {
+    tables.forEach((t, i) => {
+      const ws = wb.addWorksheet(name(t.heading || title, i));
+      const hr = ws.addRow(t.header);
+      hr.font = { bold: true };
+      hr.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } };
+      t.rows.forEach(r => ws.addRow(r));
+      t.header.forEach((h, ci) => {
+        let max = String(h).length;
+        t.rows.forEach(r => { max = Math.max(max, String(r[ci] ?? '').length); });
+        ws.getColumn(ci + 1).width = Math.min(60, Math.max(10, max + 2));
+        ws.getColumn(ci + 1).alignment = { wrapText: true, vertical: 'top' };
+      });
+      ws.views = [{ state: 'frozen', ySplit: 1 }];
+    });
+  }
+  return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
+/* ==================================================================
    4. Routes — health, extract, generate
    ================================================================== */
 /* Public — the app shell / login screen reads this to learn its capabilities. */
@@ -538,6 +629,36 @@ app.post('/api/generate', requireAuth, generateLimiter, async (req, res) => {
     console.error('generate failed:', err);
     send({ error: err?.message || 'Generation failed.' });
     res.end();
+  }
+});
+
+/** Export already-generated markdown as Word (.docx), Excel (.xlsx), or raw Markdown. */
+app.post('/api/export', requireAuth, async (req, res) => {
+  const { artifact = '', artifactName = '', markdown = '', format } = req.body || {};
+  if (!String(markdown).trim()) return res.status(400).json({ error: 'Nothing to export.' });
+  const fmt = ['docx', 'xlsx', 'md'].includes(format) ? format : (EXPORT_FMT[artifact] || 'docx');
+  const base = (artifact || 'itauditvault').replace(/[^a-z0-9-]/gi, '-').slice(0, 40) || 'itauditvault';
+  const stamp = new Date().toISOString().slice(0, 10);
+  const fname = `${base}-${stamp}.${fmt}`;
+  const title = artifactName || artifact || 'ITAuditVault';
+  try {
+    let buf, type;
+    if (fmt === 'xlsx') {
+      buf = await markdownToXlsx(String(markdown), title);
+      type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    } else if (fmt === 'docx') {
+      buf = await markdownToDocx(String(markdown), title);
+      type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    } else {
+      buf = Buffer.from(String(markdown), 'utf8');
+      type = 'text/markdown; charset=utf-8';
+    }
+    res.setHeader('Content-Type', type);
+    res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
+    res.end(buf);
+  } catch (err) {
+    console.error('export failed:', err);
+    res.status(500).json({ error: 'Could not build the file. Try the .md download instead.' });
   }
 });
 

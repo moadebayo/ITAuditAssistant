@@ -10,6 +10,10 @@ and a built-in **Skill Studio** lets the skill improve itself from publicly avai
 - **Workpaper-grade drafts** — output uses real control references, commands, and test procedures,
   not generic filler. The server selects the skill references matching your platform and framework
   and feeds them to Claude.
+- **Download as Word or Excel** — the format follows the artifact: document-style deliverables (memos,
+  reports, walkthroughs, prep packs, resumes) export to **Word (`.docx`)**; tabular ones (risk & control
+  matrix, RFI, gap assessment) export to **Excel (`.xlsx`)**, one worksheet per table. A raw Markdown
+  download stays available too.
 - **The full IT Audit skill, built in** — 22 reference files covering ITGC, ITAC/IPE, SOX, SOC 1/2,
   PCI DSS, CMMC, FedRAMP, AI audit, SAP, Oracle EBS, mainframe (RACF), Active Directory, cloud, SIEM,
   databases, SDLC, DR, TPRM, HIPAA, NIST CSF, and more.
@@ -88,6 +92,7 @@ the file into `.claude/skills/it-auditor/references/` and hot-reloads the skill.
 | `/api/health` | GET | `{ live, model, refs }` — is a key configured? |
 | `/api/extract` | POST | multipart file → `{ text }` (pdf, docx, txt, md) |
 | `/api/generate` | POST | `{ artifact, artifactName, inputs }` → SSE stream of `{ text }` |
+| `/api/export` | POST | `{ artifact, artifactName, markdown, format }` → `.docx` / `.xlsx` / `.md` file (format defaults by artifact type) |
 | `/api/skills` | GET | `{ skills: [{ name, title, summary, words }] }` — browse the library |
 | `/api/skills/:name` | GET | `{ name, title, markdown }` — read one reference |
 | `/api/skills/improve` | POST | `{ name? , topic?, instructions? }` → SSE stream + `{ sources }` (web-grounded draft) |
