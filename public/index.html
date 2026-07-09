@@ -245,7 +245,8 @@
           <span class="ttl" id="outTitle">output / awaiting input</span>
           <div class="spacer" style="flex:1"></div>
           <button class="btn ghost" id="copyBtn" style="padding:6px 12px;font-size:12.5px" disabled>Copy</button>
-          <button class="btn ghost" id="dlBtn" style="padding:6px 12px;font-size:12.5px" disabled>Download .md</button>
+          <button class="btn ghost" id="dlBtn" style="padding:6px 12px;font-size:12.5px" disabled>Download</button>
+          <button class="btn ghost" id="dlMdBtn" style="padding:6px 12px;font-size:12.5px" disabled>.md</button>
         </div>
         <div id="outWrap">
           <div class="empty"><div class="g"><i></i><i></i><i></i><i></i></div><p>Your artifact will appear here.</p><small>select artifact · configure · generate</small></div>
@@ -402,6 +403,10 @@ let selected = null;
 const state = {};
 let liveMode = false;
 
+/* Which Office format each artifact exports to by default: tabular → Excel, else Word. */
+const EXPORT_FMT = { rcm:'xlsx', rfi:'xlsx', gap:'xlsx' };
+let currentFormat = 'docx';
+
 /* ---------- shared helpers ---------- */
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
@@ -498,6 +503,8 @@ CATALOG.forEach(g=>{
 
 function selectArtifact(it){
   selected=it;
+  currentFormat = EXPORT_FMT[it.id] || 'docx';
+  document.getElementById('dlBtn').textContent = `Download .${currentFormat}`;
   document.querySelectorAll('#groups .card').forEach(c=>c.setAttribute('aria-pressed', c.dataset.id===it.id ? 'true':'false'));
   document.getElementById('cfgTitle').textContent=it.name;
   document.getElementById('cfgNote').textContent='';
@@ -593,6 +600,8 @@ document.getElementById('genBtn').onclick=async()=>{
     if(!lastMarkdown.trim()) throw new Error('No content returned. Check the server logs.');
     document.getElementById('copyBtn').disabled=false;
     document.getElementById('dlBtn').disabled=false;
+    document.getElementById('dlMdBtn').disabled=false;
+    document.getElementById('dlBtn').textContent = `Download .${currentFormat}`;
   }catch(err){
     document.getElementById('errBox').innerHTML=`<div class="err"><b>Generation failed</b>${escapeHtml(err.message)}</div>`;
     outWrap.innerHTML=`<div class="empty"><div class="g"><i></i><i></i><i></i><i></i></div><p>Nothing generated.</p><small>see the message on the left</small></div>`;
@@ -609,7 +618,26 @@ document.getElementById('copyBtn').onclick=async()=>{
   await navigator.clipboard.writeText(lastMarkdown);
   const b=document.getElementById('copyBtn'); b.textContent='Copied'; setTimeout(()=>b.textContent='Copy',1400);
 };
-document.getElementById('dlBtn').onclick=()=>downloadMd(lastMarkdown, selected.id);
+async function exportAs(fmt){
+  if(!selected || !lastMarkdown.trim()) return;
+  const btn=document.getElementById('dlBtn'); const label=btn.textContent; btn.disabled=true; btn.textContent='Building…';
+  document.getElementById('errBox').innerHTML='';
+  try{
+    const r=await fetch('/api/export',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({artifact:selected.id, artifactName:selected.name, markdown:lastMarkdown, format:fmt})});
+    if(is401(r)) return;
+    if(!r.ok){ const e=await r.json().catch(()=>({})); throw new Error(e.error||`Server returned ${r.status}`); }
+    const blob=await r.blob();
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=`${selected.id}-${new Date().toISOString().slice(0,10)}.${fmt}`;
+    a.click(); URL.revokeObjectURL(a.href);
+  }catch(err){
+    document.getElementById('errBox').innerHTML=`<div class="err"><b>Export failed</b>${escapeHtml(err.message)}</div>`;
+  }finally{ btn.disabled=false; btn.textContent=label; }
+}
+document.getElementById('dlBtn').onclick=()=>exportAs(currentFormat);
+document.getElementById('dlMdBtn').onclick=()=>downloadMd(lastMarkdown, selected.id);
 
 /* ============================================================
    SKILL STUDIO
