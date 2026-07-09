@@ -98,6 +98,17 @@ the file into `.claude/skills/it-auditor/references/` and hot-reloads the skill.
 | `/api/skills/improve` | POST | `{ name? , topic?, instructions? }` → SSE stream + `{ sources }` (web-grounded draft) |
 | `/api/skills/save` | POST | `{ name, markdown }` → persist a reference and hot-reload the skill |
 
+## Performance & cost
+
+- **Model** — the default is `claude-sonnet-5` (fast, strong for structured drafting). Set
+  `ANTHROPIC_MODEL=claude-opus-4-8` for maximum depth on complex workpapers (slower, higher cost).
+- **Prompt caching** — the large, reference-laden system prompt is sent with `cache_control`, so repeat
+  generations that route to the same references (same artifact/platform/framework) reuse it — lower
+  latency and cost. The server logs `cache_read` / `cache_write` tokens per call.
+- **Office export** — `.docx` is built with the `docx` library and `.xlsx` with `exceljs` (deterministic
+  OOXML); the server verifies the ZIP signature before sending so a bad build never reaches the browser
+  as an unopenable file.
+
 ## Deployment
 
 The API key stays server-side — it is never sent to the browser. Don't move generation into the front
