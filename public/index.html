@@ -355,7 +355,11 @@ const CATALOG = [
       {id:'rcm',     ref:'WP-01', name:'Risk & control matrix', desc:'Objectives, risks, control activities, type/nature/risk, framework mapping.', fmt:'Matrix (markdown table)'},
       {id:'program', ref:'WP-02', name:'Detailed audit program', desc:'Per control: Interview → Test of control → Conclusion, with evidence/IPE.', fmt:'Test program'},
       {id:'walkthrough', ref:'WP-03', name:'Walkthrough / TOD',  desc:'Design-effectiveness walkthrough narrative and design conclusion.', fmt:'Narrative'},
-      {id:'gap',     ref:'WP-04', name:'Compliance gap assessment', desc:'Requirement-by-requirement status, gaps, and remediation plan.', fmt:'Gap matrix'},
+      {id:'gap',     ref:'WP-04', name:'Compliance gap assessment', desc:'Assessment questionnaire plus a requirement-by-requirement control & gap matrix and remediation plan. Framework is the only required field.', fmt:'Questionnaire + gap matrix'},
+    ]},
+  { group:'Third-party risk', note:'Vendor & supply-chain assurance',
+    items:[
+      {id:'tpra', ref:'TPR-01', name:'Third-party / vendor assessment', desc:'Vendor security questionnaire (CSA CAIQ / VSA / SIG) plus a vendor risk & control matrix, mapped to your framework and tiered by inherent risk.', fmt:'Questionnaire + matrix'},
     ]},
   { group:'Career tools', note:'For the auditor, not the audit',
     items:[
@@ -366,13 +370,18 @@ const CATALOG = [
 
 const SUGGEST = {
   platform:['Oracle EBS','SAP S/4HANA','Active Directory / Windows','Mainframe (z/OS, RACF)','Oracle Database','SQL Server','Linux / Unix','AWS','Azure','GCP','VMware','Firewall / Network','SIEM'],
-  framework:['SOX ITGC','SOC 2 (Trust Services Criteria)','SOC 1 (ICFR)','PCI DSS v4.0','NIST CSF','NIST SP 800-53','ISO/IEC 27001','COBIT','CMMC (800-171)','FedRAMP','HIPAA Security Rule','NIST AI RMF / ISO 42001','HITRUST'],
+  framework:['SOX ITGC','SOC 2 (Trust Services Criteria)','SOC 1 (ICFR)','PCI DSS v4.0','NIST CSF','NIST SP 800-53','ISO/IEC 27001','COBIT','CMMC (800-171)','FedRAMP','HIPAA Security Rule','NIST AI RMF / ISO 42001','HITRUST','CSA CCM (Cloud Controls Matrix)','Vendor Security Alliance (VSA)','Shared Assessments SIG'],
 };
 
 const F = {
   scope: {k:'scope', label:'Scope & systems', hint:'What is being audited? Name the applications, databases, OS, and environment.', type:'textarea', ph:'e.g. Oracle EBS Financials on Linux, Oracle 19c database, Active Directory for authentication.'},
   platform:{k:'platform', label:'Platform / technology', type:'text', chips:'platform', ph:'e.g. Oracle EBS, mainframe (RACF), AWS'},
   framework:{k:'framework', label:'Framework / standard', type:'text', chips:'framework', ph:'e.g. SOX ITGC, SOC 2, PCI DSS v4.0'},
+  platformOpt:{k:'platform', label:'Platform / technology', type:'text', opt:true, chips:'platform', ph:'e.g. AWS, Oracle EBS, mainframe (RACF)'},
+  applications:{k:'applications', label:'Applications', type:'text', opt:true, ph:'e.g. Oracle EBS, Salesforce, ServiceNow'},
+  os:{k:'os', label:'Operating system', type:'text', opt:true, ph:'e.g. Linux (RHEL), Windows Server'},
+  database:{k:'database', label:'Database', type:'text', opt:true, ph:'e.g. Oracle 19c, SQL Server, PostgreSQL'},
+  vendor:{k:'vendor', label:'Vendor / service provider', type:'text', opt:true, ph:'e.g. Acme Cloud Payroll (SaaS)'},
   entity:{k:'entity', label:'Organization', type:'text', opt:true, ph:'e.g. Northwind Financial Services'},
   period:{k:'period', label:'Audit period', type:'text', opt:true, ph:'e.g. Jan 1 – Dec 31, 2026'},
   auditRef:{k:'auditRef', label:'Audit reference', type:'text', opt:true, ph:'e.g. 26-014'},
@@ -394,7 +403,8 @@ const SPEC = {
   rcm:         [F.platform,F.framework,F.scope,F.domains,F.notes],
   program:     [F.platform,F.framework,F.scope,F.domains,F.notes],
   walkthrough: [F.platform,F.framework,F.scope,F.notes],
-  gap:         [F.framework,F.scope,F.platform,F.notes],
+  gap:         [F.framework,F.platformOpt,F.applications,F.os,F.database,F.notes],
+  tpra:        [F.framework,F.vendor,F.platformOpt,F.applications,F.os,F.database,F.notes],
   interview:   [F.jd,F.resume,F.notes],
   resume:      [F.jd,F.resumeSrc,F.notes],
 };
@@ -404,7 +414,7 @@ const state = {};
 let liveMode = false;
 
 /* Which Office format each artifact exports to by default: tabular → Excel, else Word. */
-const EXPORT_FMT = { rcm:'xlsx', rfi:'xlsx', gap:'xlsx' };
+const EXPORT_FMT = { rcm:'xlsx', rfi:'xlsx', gap:'xlsx', tpra:'xlsx' };
 let currentFormat = 'docx';
 
 /* ---------- shared helpers ---------- */

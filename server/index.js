@@ -223,6 +223,7 @@ const BASE_REFS = {
   gap:          ['audit-lifecycle', 'deliverable-templates', 'gap-assessment', 'frameworks'],
   interview:    ['interview-prep', 'audit-lifecycle', 'itgc', 'itac-and-ipe'],
   resume:       ['interview-prep', 'audit-lifecycle'],
+  tpra:         ['audit-lifecycle', 'third-party-risk-audit', 'itac-and-ipe', 'frameworks'],
 };
 
 /* Keyword → reference routing. Mirrors the skill's own routing table. */
@@ -247,11 +248,13 @@ const ROUTES = [
   [/sox|itgc|icfr|general control/i,                   'itgc'],
   [/cobit|iso\s*27001|hitrust|framework|standard/i,    'frameworks'],
   [/gap assessment|readiness|control mapping|crosswalk|maturity assessment|current[- ]state|target[- ]state/i, 'gap-assessment'],
+  [/third[- ]party|vendor|supplier|service provider|tprm|supply chain|\bcsa\b|\bccm\b|caiq|\bstar\b|\bvsa\b|\bsig\b|shared assessments|27036|800-161/i, 'third-party-risk-audit'],
 ];
 
 function pickRefs(artifact, inputs) {
   const picked = new Set(BASE_REFS[artifact] || ['audit-lifecycle']);
-  const hay = [inputs.platform, inputs.framework, inputs.scope, inputs.domains, inputs.notes, inputs.jd]
+  const hay = [inputs.platform, inputs.framework, inputs.scope, inputs.domains, inputs.notes, inputs.jd,
+    inputs.applications, inputs.os, inputs.database, inputs.vendor]
     .filter(Boolean).join(' \n ');
   for (const [re, ref] of ROUTES) if (re.test(hay)) picked.add(ref);
   return [...picked].filter(r => SKILL.refs[r]).slice(0, 6);
@@ -335,12 +338,51 @@ inquiry, inspection, observation, and reperformance), the specific evidence insp
 conclusion (Design Effective / Design Deficient) with rationale. Note where design deficiencies mean
 operating effectiveness cannot be relied upon.`,
 
-  gap: `Produce a COMPLIANCE GAP ASSESSMENT against the named framework/standard. Begin with a short
-scoping section (what is in the assessment boundary and why). Then a markdown table:
-Requirement Ref | Requirement | Status (Met / Not Met / Partially Met / N/A) | Evidence Reviewed |
-Gap Description | Remediation | Priority | Owner | Target Date.
-Cover the framework's actual requirement structure (e.g., PCI's 12 requirements, the NIST 800-171
-families, SOC 2 TSC, CMMC levels). Finish with a short remediation roadmap grouped by priority.`,
+  gap: `Produce a COMPLIANCE GAP ASSESSMENT against the named framework/standard, in TWO parts, per
+gap-assessment.md. The FRAMEWORK is the anchor; the platform, applications, operating system, and
+database (when given) sharpen the questions and control references — do not require them.
+Begin with a short SCOPING section: the assessment boundary (the systems in scope where given), the
+target framework and — if it has levels/baselines — the target level, and explicit exclusions with
+reasons.
+
+PART 1 — ASSESSMENT QUESTIONNAIRE. A markdown table of assessment questions derived from the framework's
+own requirement structure (e.g., PCI's 12 requirements, the NIST 800-171 families, SOC 2 TSC, ISO 27002
+themes, CSF functions/categories). Columns:
+# | Domain / Requirement Ref | Assessment Question | What Good Looks Like | Evidence to Request | Response (Yes/No/Partial/N/A) | Notes.
+Produce 25-40 questions grouped by domain, made specific to the named platform/applications/OS/database
+where relevant.
+
+PART 2 — CONTROL / GAP MATRIX. A markdown table using the gap-assessment.md columns:
+Requirement Ref | Requirement / Control Objective | In-Scope Process/System | Current Control(s) | Status (Met/Partially Met/Not Met/N/A) | Maturity (Current->Target) | Evidence Reviewed | Gap Description | Risk (H/M/L) | Remediation | Priority | Owner | Target Date.
+Map each row to the framework's specific requirement IDs; use the multi-framework crosswalk in
+gap-assessment.md to note equivalent references where useful. Default Status to "Not Met - to be
+validated" and Owner/Target Date to placeholders.
+
+Finish with a short REMEDIATION ROADMAP grouped by priority. Cover the framework's actual requirement
+structure; be specific to the systems in scope.`,
+
+  tpra: `Produce a THIRD-PARTY / VENDOR RISK ASSESSMENT for the named vendor/service against the chosen
+framework, in TWO parts, per third-party-risk-audit.md. Begin with a SCOPING section: the vendor/service
+and what data/process it supports, an INHERENT-RISK TIER (Critical/High/Medium/Low) with rationale, and
+the assessment basis (CSA CAIQ/CCM, Vendor Security Alliance VSAQ, Shared Assessments SIG, SOC 2
+reliance, ISO 27001/27036, NIST 800-161).
+
+PART 1 — VENDOR SECURITY ASSESSMENT QUESTIONNAIRE grounded in CSA CAIQ / VSA / SIG and mapped to the
+chosen framework. Columns:
+# | Domain (CCM domain) | Assessment Question | Framework Ref | Evidence to Request | Response (Yes/No/Partial/N/A) | Notes.
+Produce 25-40 questions across the vendor-risk domains (governance; identity & access incl. privileged/
+MFA; data protection & encryption/key management; secure SDLC & change; vulnerability & patch mgmt &
+pentest; logging, monitoring & detection; incident response & breach notification; BC/DR; subservice/
+fourth-party & concentration; physical; HR & awareness; compliance & certifications).
+
+PART 2 — VENDOR RISK & CONTROL MATRIX. Columns:
+Ctrl Ref | Control Domain | Control Objective | Key Risk Addressed | Framework Ref (CCM/ISO/SOC 2/NIST) | Expected Control Activity | Questionnaire Ref | Type (P/D) | Nature (M/A) | Risk (H/M/L) | Conclusion | Evidence / IPE.
+Use the TPR1-TPR9 control scheme from third-party-risk-audit.md; cover 15-25 controls grouped by domain;
+default Conclusion to "TBD - not yet validated".
+
+Finish with residual-risk commentary and recommended ongoing monitoring (SOC 2 refresh + bridge letter,
+reassessment cadence by tier, CSA STAR/registry checks). Ground the questions and control language in
+third-party-risk-audit.md; do not invent certification names.`,
 
   interview: `Produce an IT AUDIT INTERVIEW PREP PACK from the job description (and resume if given),
 per interview-prep.md. Structure:
@@ -399,6 +441,10 @@ function buildUser(artifact, artifactName, inputs) {
     '',
     L('platform',  'Platform / technology'),
     L('framework', 'Framework / standard'),
+    L('vendor',    'Vendor / service provider'),
+    L('applications', 'Applications'),
+    L('os',        'Operating system'),
+    L('database',  'Database'),
     L('scope',     'Scope & systems'),
     L('entity',    'Organization'),
     L('period',    'Audit period'),
@@ -480,7 +526,7 @@ function extractSources(finalMsg) {
    tabular artifacts (RCM, RFI, gap assessment) export to Excel. The
    default per artifact is below; the client may override the format.
    ================================================================== */
-const EXPORT_FMT = { rcm: 'xlsx', rfi: 'xlsx', gap: 'xlsx' };
+const EXPORT_FMT = { rcm: 'xlsx', rfi: 'xlsx', gap: 'xlsx', tpra: 'xlsx' };
 
 function splitTableRow(line) {
   return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|')
