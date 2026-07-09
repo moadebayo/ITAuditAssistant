@@ -82,7 +82,14 @@ Domain / platform references (read the one(s) named in the task):
 - `references/cloud-and-emerging.md` — AWS, Azure, GCP, virtualization (VMware), shared-responsibility
   model, CIS benchmarks, CASB, key console/CLI checks.
 - `references/sdlc-dr-physical-tprm.md` — SDLC/project audit, disaster recovery & backup, physical /
-  environmental security, third-party risk management (TPRM), HIPAA security rule.
+  environmental security, third-party risk management (TPRM) summary, HIPAA security rule.
+- `references/third-party-risk-audit.md` — **dedicated third-party / vendor / supply-chain assurance**:
+  the common vendor frameworks & questionnaires (CSA CCM/CAIQ & STAR, Vendor Security Alliance VSA/VSAQ,
+  Shared Assessments SIG/SCA, SOC 2 reliance, ISO 27036, NIST 800-161, CSF GV.SC), the TPRM lifecycle
+  and inherent-risk tiering, a vendor Risk & Control Matrix (refs TPR1–TPR9), the vendor security
+  questionnaire, and the audit program + engagement deliverables. **Read this for any vendor / service
+  provider / third-party / supply-chain assessment or audit; combine with `itac-and-ipe.md` (SOC 2) and
+  `gap-assessment.md`.**
 - `references/secure-development-sdl.md` — Secure Development Lifecycle (Microsoft SDL / maps to OWASP
   SAMM, NIST SSDF): training, requirements, design, threat modeling, SAST/DAST/fuzz, FSR.
 - `references/software-implementation-audit.md` — software/ERP implementation project assurance:
@@ -180,8 +187,14 @@ deliverables into the skill directory (`.claude/skills/it-auditor/`).
 - "FedRAMP audit / readiness / authorization / 800-53 / 20x" → read `fedramp-audit.md`.
 - "Gap assessment / readiness / control mapping / maturity assessment of [entity/process/controls]
   against [framework(s)]" → read `gap-assessment.md` (method + crosswalk) plus each named framework
-  reference; produce an Excel gap matrix (one sheet per framework/domain) and, if formal, a Word
-  readiness report with a summary dashboard and remediation roadmap.
+  reference; produce an **assessment questionnaire + a control/gap matrix** (Excel) and, if formal, a
+  Word readiness report with a summary dashboard and remediation roadmap. Framework is the only required
+  input; platform, applications, OS, database, and additional context are optional and sharpen the
+  questions and control refs.
+- "Third-party / vendor / supply-chain risk assessment or audit (CSA CCM/CAIQ, VSA, SIG, SOC 2 reliance,
+  ISO 27036, NIST 800-161)" → read `third-party-risk-audit.md` (+ `itac-and-ipe.md` for SOC 2). Produce
+  a vendor security questionnaire and a Vendor Risk & Control Matrix; for a full audit add the audit
+  program, observation memo, and report from the standard templates.
 - "AI audit / AI governance / model risk / ISO 42001 / NIST AI RMF / EU AI Act / LLM controls" → read
   `ai-audit.md`.
 - "Review this SOC 2 report" → read `itac-and-ipe.md` (SOC section); check scope, period, opinion,

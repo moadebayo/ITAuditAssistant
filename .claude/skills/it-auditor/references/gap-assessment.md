@@ -95,7 +95,18 @@ crosswalk to **NIST AI RMF (Govern/Map/Measure/Manage), ISO/IEC 42001, and the E
 `ai-audit.md`. HITRUST CSF already harmonizes HIPAA/ISO/NIST/PCI, so where HITRUST is the target, map
 domains to its 14 control categories and use HITRUST as the single crosswalk spine.
 
-## The gap assessment matrix (the deliverable) — Excel
+## The assessment questionnaire (deliverable 1) — Excel/Word
+
+A gap assessment is commonly delivered as **two artifacts**: an **assessment questionnaire** the entity
+(or a vendor) answers, and the **control/gap matrix** that records the resulting gaps. Derive the
+questionnaire directly from the target framework's requirement structure so every question traces to a
+criterion. Columns: `# | Domain / Requirement Ref | Assessment Question | What Good Looks Like |
+Evidence to Request | Response (Yes / No / Partial / N/A) | Notes / Gap`. Group by the framework's own
+structure and make questions specific to the in-scope platform, applications, OS, and database where
+given (e.g., "Is MFA enforced for all administrative access to the Oracle EBS application and the
+Oracle 19c database?"). The questionnaire feeds the matrix: each "No/Partial" becomes a gap row.
+
+## The gap assessment matrix (the deliverable 2) — Excel
 
 One row per requirement (or per control-domain × framework), grouped by domain or by the framework's
 own structure (PCI's 12 requirements, the 800-171 families, SOC 2 CC/A/C/PI, ISO 27002 themes, CSF
@@ -154,6 +165,13 @@ maturity-improvement items.
   category/objective and report the maturity delta. See `nist-csf-audit.md`.
 - **AI systems** — assess governance and system controls against **NIST AI RMF / ISO 42001 / EU AI
   Act** and classify EU AI Act risk tier. See `ai-audit.md`.
+- **Third-party / vendor gap assessment** — assess a **vendor/service provider** against the entity's
+  control expectations and the chosen standard using a vendor questionnaire — **CSA CAIQ/CCM, Vendor
+  Security Alliance (VSA/VSAQ), or Shared Assessments SIG** — corroborated by the vendor's **SOC 2
+  Type II** (scope, exceptions, CUECs, bridge letter), ISO 27001, or CSA STAR entry. Tier the vendor by
+  inherent risk first (that sets questionnaire depth), and treat unimplemented CUECs and missing
+  contractual/BAA terms as gaps. Full method, control refs (TPR1–TPR9), questionnaire, and audit
+  program are in `third-party-risk-audit.md`.
 
 ## Common pitfalls
 
