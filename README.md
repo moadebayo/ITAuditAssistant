@@ -54,9 +54,10 @@ Without `ANTHROPIC_API_KEY` the app runs in **demo mode** — the picker, forms,
 and Skill Studio all work, but output is a fixed sample rather than a real generation. The header badge
 shows the mode. Add the key and restart to go live.
 
-> `npm start` does not read `.env` automatically. Either export the variable
-> (`export ANTHROPIC_API_KEY=sk-ant-...`) before running, or add `dotenv` and
-> `import 'dotenv/config'` at the top of `server/index.js`.
+> The server loads `.env` automatically at startup (via `dotenv`), so setting
+> `ANTHROPIC_API_KEY` (and the other variables) in `.env` is enough — no need to
+> export them. On hosts like Railway, set the variables in the dashboard instead;
+> real environment variables take precedence over `.env`.
 
 Get an API key at <https://console.anthropic.com>.
 
