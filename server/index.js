@@ -255,13 +255,27 @@ const ROUTES = [
   [/third[- ]party|vendor|supplier|service provider|tprm|supply chain|\bcsa\b|\bccm\b|caiq|\bstar\b|\bvsa\b|\bsig\b|shared assessments|27036|800-161/i, 'third-party-risk-audit'],
 ];
 
+/* Fields that belong only to the training artifact. The client posts the whole global form
+   state on every generation, so a training topic/level/duration entered earlier would otherwise
+   leak into an RCM/report/RFI prompt (and its reference routing) even though the field is hidden.
+   Strip them for every other artifact. */
+const TRAINING_ONLY = ['topic', 'level', 'duration'];
+function scrubInputs(artifact, inputs) {
+  if (artifact === 'training' || !inputs) return inputs || {};
+  const out = { ...inputs };
+  for (const k of TRAINING_ONLY) delete out[k];
+  return out;
+}
+
 function pickRefs(artifact, inputs) {
   const picked = new Set(BASE_REFS[artifact] || ['audit-lifecycle']);
   const hay = [inputs.platform, inputs.framework, inputs.scope, inputs.domains, inputs.notes, inputs.jd,
     inputs.applications, inputs.os, inputs.database, inputs.vendor, inputs.topic]
     .filter(Boolean).join(' \n ');
   for (const [re, ref] of ROUTES) if (re.test(hay)) picked.add(ref);
-  return [...picked].filter(r => SKILL.refs[r]).slice(0, 6);
+  // Training modules may legitimately need more domain references than a single workpaper.
+  const cap = artifact === 'training' ? 8 : 6;
+  return [...picked].filter(r => SKILL.refs[r]).slice(0, cap);
 }
 
 /* ==================================================================
@@ -405,7 +419,7 @@ the resume does not supply it, use a bracketed placeholder and coach what to ins
 training style, per training.md. Ground it in the domain reference material supplied — use REAL control
 references, commands, parameters, transaction codes, console paths, and framework requirement IDs, and
 explain the WHY (risk and control objective), not just the what. Adapt depth to the audience level if
-given (Foundational / Intermediate / Advanced / Exam prep) and to the duration.
+given (Foundational / Intermediate / Advanced) and to the duration.
 Structure (use the training.md module template):
 1. Module header — title, audience level, estimated duration, prerequisites, and the skill area it covers.
 2. Learning objectives — 4-8 measurable outcomes ("By the end, the participant can ...").
@@ -415,12 +429,11 @@ Structure (use the training.md module template):
    Interview -> Test of Control (TOD/TOE) -> Conclusion pattern, with the platform/framework specifics.
 6. Worked example / walkthrough — a realistic end-to-end scenario (obtain population, IPE-test, sample,
    test, document the exception, conclude).
-7. Common pitfalls & exam/interview traps.
+7. Common pitfalls & practical traps.
 8. Exercise / case study — 2-3 hands-on tasks or a mini-case with a defined deliverable.
 9. Knowledge check — 5-8 questions (mix of MCQ and short answer) WITH an answer key and a one-line
    rationale each.
-10. Summary & further study — key takeaways, which skill reference(s) to study next, and the CISA/CISM
-    domain(s) it maps to.
+10. Summary & further study — key takeaways and which skill reference(s) to study next.
 If the topic is broad (e.g., "the audit lifecycle" or "PCI DSS for auditors"), cover it as a coherent
 module at the right altitude; if narrow (e.g., "testing terminated-user access on Active Directory"),
 go deep with the specific procedure.`,
@@ -843,9 +856,11 @@ function describe(artifact, name, inputs, markdown) {
 }
 
 app.post('/api/generate', requireAuth, generateLimiter, async (req, res) => {
-  const { artifact, artifactName, inputs = {} } = req.body || {};
+  const { artifact, artifactName, inputs: rawInputs = {} } = req.body || {};
   if (!artifact || !TASKS[artifact]) return res.status(400).json({ error: 'Unknown artifact type.' });
 
+  // Drop training-only fields the client may have carried over from a prior artifact.
+  const inputs = scrubInputs(artifact, rawInputs);
   const format = EXPORT_FMT[artifact] || 'docx';
   try {
     let markdown;
