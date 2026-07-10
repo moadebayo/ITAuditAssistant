@@ -50,11 +50,11 @@ Core method and deliverables (read for almost any audit task):
   (RFI), audit observation memo, and audit report. **Read this whenever the user asks to generate,
   draft, or write any of those documents.**
 - `references/training.md` — **IT audit training curriculum & module generator**: build a detailed
-  training module on any topic, a full onboarding/curriculum program, or certification (CISA/CISM/CRISC/
-  CIA) study material — in a typical IT-audit training style (objectives → real controls/commands →
-  walkthrough → exercise → knowledge check). It maps the **entire skill** (every domain reference and
-  framework) to a tiered program and to exam domains. **Read this whenever the user wants to train,
-  teach, onboard, upskill, build a course/module/curriculum, or study for a certification.**
+  training module on any technology-audit topic, or a full onboarding/curriculum program — in a typical
+  IT-audit training style (objectives → real controls/commands → walkthrough → exercise → knowledge
+  check). It maps the **entire skill** (every domain reference and framework) to a tiered program.
+  **Read this whenever the user wants to train, teach, onboard, upskill, or build a
+  course/module/curriculum.**
 - `references/interview-prep.md` — IT audit **interview Q&A generator**: takes an uploaded job
   description (and optionally a resume) and produces tailored interview questions with strong model
   answers, drawing on all the domain references for technical substance. **Read this whenever the user
@@ -221,8 +221,6 @@ deliverables into the skill directory (`.claude/skills/it-auditor/`).
   `training.md` (module template + curriculum map) plus the topic's domain reference(s); produce a
   detailed module (objectives → deep dive with real controls/commands → worked example → exercise →
   knowledge check with answer key). Word document for a handout, inline for a quick lesson.
-- "Help me prep for CISA / certification study" → read `training.md` (Certification mapping) and the
-  mapped references; answer inline or build a study module.
 
 Stay in the auditor's mindset: independent, evidence-driven, risk-based, and skeptical of any
 evidence that has not been proven complete and accurate.

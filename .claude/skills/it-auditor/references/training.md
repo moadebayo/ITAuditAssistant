@@ -1,10 +1,10 @@
 # IT Audit Training — Curriculum & Module Generator
 
-The reference for building **IT audit training**: a single detailed **training module** on any topic, a
-full **curriculum / onboarding program**, or **certification (CISA/CISM/CRISC/CIA) study material**.
-It is written to span the **entire** IT Audit skill — every domain reference and framework — so training
-is grounded in the same real control references, commands, and test procedures the skill uses for
-workpapers, not generic slideware.
+The reference for building **IT audit training**: a single detailed **training module** on any
+technology-audit topic, or a full **curriculum / onboarding program**. It is written to span the
+**entire** IT Audit skill — every domain reference and framework — so training is grounded in the same
+real control references, commands, and test procedures the skill uses for workpapers, not generic
+slideware.
 
 **Typical IT-audit training style** (what "detailed and practitioner-grade" means here): objectives-led;
 concept → **real** control reference / command / framework requirement → **walkthrough** of how an
@@ -19,11 +19,10 @@ deficiency).
   topic's domain reference(s) (routing table in `SKILL.md`). Level and duration are optional; default to
   the audience implied by the topic.
 - **Design a full program / onboarding path** → use the *Curriculum map* and *Onboarding path*.
-- **Certification study** → use the *Certification mapping* to pull the right references per exam domain.
 
 ## Module template (use for any topic)
 
-1. **Module header** — title; audience level (Foundational / Intermediate / Advanced / Exam prep);
+1. **Module header** — title; audience level (Foundational / Intermediate / Advanced);
    estimated duration; prerequisites; the skill reference(s) it draws on.
 2. **Learning objectives** — 4–8 measurable outcomes ("By the end, the participant can obtain a
    system-generated user listing, IPE-test it, and conclude on the access control").
@@ -36,14 +35,13 @@ deficiency).
    platform/framework specifics. Show the actual query/command/console path where the domain has one.
 6. **Worked example / walkthrough** — a realistic end-to-end scenario (obtain the population, IPE-test
    it, sample, test, document the exception, conclude).
-7. **Common pitfalls & exam/interview traps** — e.g., inquiry-only evidence, accepting a screenshot as a
+7. **Common pitfalls & practical traps** — e.g., inquiry-only evidence, accepting a screenshot as a
    population, testing operating effectiveness before design.
 8. **Exercise / case study** — 2–3 hands-on tasks or a mini-case with a defined deliverable (e.g., "here
    is a redacted user listing and an HR termination list — identify terminated-but-active users").
 9. **Knowledge check** — 5–8 questions (mix of multiple-choice and short answer) **with an answer key**
    and a one-line rationale each.
-10. **Summary & further study** — key takeaways; which skill reference(s) to read next; the CISA/CISM
-    domain(s) this maps to.
+10. **Summary & further study** — key takeaways and which skill reference(s) to read next.
 
 Deliver a module as an **inline lesson** for a quick request, or a **Word document** for a formal
 handout/workbook (see "Choosing the output format" in `SKILL.md`).
@@ -108,9 +106,8 @@ A tiered program. Each module names the skill reference(s) that supply its subst
 - Writing findings (CCCER), ratings, opinions, and management action plans; reusable finding/rating
   blocks → `deliverable-templates.md`.
 
-**Career & certification**
+**Career development**
 - Interview preparation and answering technical questions → `interview-prep.md`.
-- Certification study — see the mapping below.
 
 ## Suggested onboarding path (new IT auditor, first ~90 days)
 
@@ -122,29 +119,7 @@ A tiered program. Each module names the skill reference(s) that supply its subst
 4. Weeks 8–10: one or two Level 2 platform modules matching the audit plan (e.g., Active Directory +
    the relevant ERP/database).
 5. Weeks 11–12: Level 5 reporting — write a CCCER finding and an observation memo from a seeded exception.
-6. Ongoing: Level 3/3.5/4 modules as engagements require; interview/cert study.
-
-## Certification mapping
-
-Use this to assemble exam-focused study material from the skill.
-
-**CISA — the five job-practice domains:**
-- **Domain 1 — Information Systems Auditing Process** → `audit-lifecycle.md`, `deliverable-templates.md`,
-  `engagement-documents.md`, `itac-and-ipe.md` (IPE, sampling, evidence).
-- **Domain 2 — Governance & Management of IT** → `frameworks.md` (COBIT), `nist-csf-audit.md`,
-  `software-implementation-audit.md`, `sdlc-dr-physical-tprm.md` (TPRM).
-- **Domain 3 — IS Acquisition, Development & Implementation** → `software-implementation-audit.md`,
-  `secure-development-sdl.md`, `sdlc-dr-physical-tprm.md` (SDLC).
-- **Domain 4 — IS Operations & Business Resilience** → `infrastructure-audit.md`,
-  `siem-and-logging-audit.md`, `sdlc-dr-physical-tprm.md` (DR/backup), `itgc.md` (operations).
-- **Domain 5 — Protection of Information Assets** → `itgc.md` (security), `infrastructure-audit.md`,
-  `active-directory-audit.md`, `mainframe-audit.md`, `sap-audit.md`, `oracle-erp-audit.md`,
-  `cloud-and-emerging.md`, `pci-dss-audit.md`, `siem-and-logging-audit.md`.
-
-**Also:** CRISC → risk/controls emphasis (`audit-lifecycle.md`, `gap-assessment.md`,
-`third-party-risk-audit.md`, `frameworks.md`); CISM → security program management (`frameworks.md`
-ISO 27001/NIST CSF, `siem-and-logging-audit.md`, `secure-development-sdl.md`); CIA → the general
-internal-audit process (`audit-lifecycle.md`, `engagement-documents.md`).
+6. Ongoing: Level 3/3.5/4 modules as engagements require; interview practice.
 
 ## Facilitation guidance (instructor notes)
 

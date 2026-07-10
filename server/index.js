@@ -255,27 +255,6 @@ const ROUTES = [
   [/third[- ]party|vendor|supplier|service provider|tprm|supply chain|\bcsa\b|\bccm\b|caiq|\bstar\b|\bvsa\b|\bsig\b|shared assessments|27036|800-161/i, 'third-party-risk-audit'],
 ];
 
-/* Certification-domain routing for training. Certification-study requests often name an exam
-   domain rather than a platform (e.g. "CISA Domain 4: IS Operations and Business Resilience"),
-   which the platform ROUTES above would never match — so the references those domains actually
-   need (infrastructure, SIEM, DR, ITGC, …) would be absent from the prompt. This mirrors the
-   certification mapping in training.md and is applied only to the training artifact. */
-const CERT_ROUTES = [
-  [/cisa[^.]*(domain\s*1\b|auditing process)|information systems auditing process/i,
-    ['audit-lifecycle', 'deliverable-templates', 'engagement-documents', 'itac-and-ipe']],
-  [/cisa[^.]*(domain\s*2\b|governance)|governance (and|&|and management) of it/i,
-    ['frameworks', 'nist-csf-audit', 'software-implementation-audit', 'sdlc-dr-physical-tprm']],
-  [/cisa[^.]*(domain\s*3\b|acquisition)|acquisition, development|development (and|&) implementation/i,
-    ['software-implementation-audit', 'secure-development-sdl', 'sdlc-dr-physical-tprm']],
-  [/cisa[^.]*(domain\s*4\b)|is operations|business resilience|operations (and|&) business resilience/i,
-    ['infrastructure-audit', 'siem-and-logging-audit', 'sdlc-dr-physical-tprm', 'itgc']],
-  [/cisa[^.]*(domain\s*5\b)|protection of information assets/i,
-    ['itgc', 'infrastructure-audit', 'active-directory-audit', 'pci-dss-audit', 'siem-and-logging-audit', 'cloud-and-emerging']],
-  [/\bcrisc\b/i, ['audit-lifecycle', 'gap-assessment', 'third-party-risk-audit', 'frameworks']],
-  [/\bcism\b/i,  ['frameworks', 'siem-and-logging-audit', 'secure-development-sdl']],
-  [/\bcia\b(?![a-z])/i, ['audit-lifecycle', 'engagement-documents']],
-];
-
 /* Fields that belong only to the training artifact. The client posts the whole global form
    state on every generation, so a training topic/level/duration entered earlier would otherwise
    leak into an RCM/report/RFI prompt (and its reference routing) even though the field is hidden.
@@ -291,12 +270,9 @@ function scrubInputs(artifact, inputs) {
 function pickRefs(artifact, inputs) {
   const picked = new Set(BASE_REFS[artifact] || ['audit-lifecycle']);
   const hay = [inputs.platform, inputs.framework, inputs.scope, inputs.domains, inputs.notes, inputs.jd,
-    inputs.applications, inputs.os, inputs.database, inputs.vendor, inputs.topic, inputs.level]
+    inputs.applications, inputs.os, inputs.database, inputs.vendor, inputs.topic]
     .filter(Boolean).join(' \n ');
   for (const [re, ref] of ROUTES) if (re.test(hay)) picked.add(ref);
-  if (artifact === 'training') {
-    for (const [re, refs] of CERT_ROUTES) if (re.test(hay)) for (const r of refs) picked.add(r);
-  }
   // Training modules may legitimately need more domain references than a single workpaper.
   const cap = artifact === 'training' ? 8 : 6;
   return [...picked].filter(r => SKILL.refs[r]).slice(0, cap);
@@ -443,7 +419,7 @@ the resume does not supply it, use a bracketed placeholder and coach what to ins
 training style, per training.md. Ground it in the domain reference material supplied — use REAL control
 references, commands, parameters, transaction codes, console paths, and framework requirement IDs, and
 explain the WHY (risk and control objective), not just the what. Adapt depth to the audience level if
-given (Foundational / Intermediate / Advanced / Exam prep) and to the duration.
+given (Foundational / Intermediate / Advanced) and to the duration.
 Structure (use the training.md module template):
 1. Module header — title, audience level, estimated duration, prerequisites, and the skill area it covers.
 2. Learning objectives — 4-8 measurable outcomes ("By the end, the participant can ...").
@@ -453,12 +429,11 @@ Structure (use the training.md module template):
    Interview -> Test of Control (TOD/TOE) -> Conclusion pattern, with the platform/framework specifics.
 6. Worked example / walkthrough — a realistic end-to-end scenario (obtain population, IPE-test, sample,
    test, document the exception, conclude).
-7. Common pitfalls & exam/interview traps.
+7. Common pitfalls & practical traps.
 8. Exercise / case study — 2-3 hands-on tasks or a mini-case with a defined deliverable.
 9. Knowledge check — 5-8 questions (mix of MCQ and short answer) WITH an answer key and a one-line
    rationale each.
-10. Summary & further study — key takeaways, which skill reference(s) to study next, and the CISA/CISM
-    domain(s) it maps to.
+10. Summary & further study — key takeaways and which skill reference(s) to study next.
 If the topic is broad (e.g., "the audit lifecycle" or "PCI DSS for auditors"), cover it as a coherent
 module at the right altitude; if narrow (e.g., "testing terminated-user access on Active Directory"),
 go deep with the specific procedure.`,
