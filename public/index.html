@@ -148,6 +148,10 @@
   .done-fname{font-family:var(--mono);font-size:13px;color:var(--ink)}
   .done-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
   .done-chips span{font-family:var(--mono);font-size:11px;color:var(--slate);background:#f2f4f6;border:1px solid var(--line);padding:3px 9px;border-radius:20px}
+  .done-src{margin:4px 0 16px;border:1px solid var(--line);border-radius:8px;padding:12px 14px;background:#fbfcfd}
+  .done-src-h{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute);margin-bottom:8px}
+  .done-src ul{margin:0;padding-left:16px}
+  .done-src li{font-size:12.5px;margin-bottom:3px;word-break:break-all}
   .done-hint{font-size:13px;color:var(--mute);margin:0}
 
   .empty{padding:70px 24px;text-align:center;color:var(--mute)}
@@ -377,6 +381,7 @@ const CATALOG = [
     items:[
       {id:'interview', ref:'CT-01', name:'Interview questions & answers', desc:'Tailored Q&A from a job description and (optionally) your resume.', fmt:'Prep pack'},
       {id:'resume',    ref:'CT-02', name:'Resume / CV',                   desc:'An IT-audit resume targeted at a specific job description.', fmt:'Resume'},
+      {id:'jobmatch',  ref:'CT-03', name:'Job search & resume match',      desc:'Auto-searches the web for current roles matching your preference and experience, then ranks your resume against each with a 0–100 match score and a gap analysis.', fmt:'Ranked jobs (Excel)'},
     ]},
   { group:'Training & enablement', note:'Learn and teach IT audit',
     items:[
@@ -411,6 +416,12 @@ const F = {
   jd:{k:'jd', label:'Job description', type:'textarea', hint:'Paste the JD, or upload a file below.', ph:'Paste the full job description…', upload:'jdFile'},
   resume:{k:'resume', label:'Your resume / CV', type:'textarea', opt:true, hint:'Optional. With it, answers are tailored to your real experience and gaps are flagged.', ph:'Paste your resume…', upload:'resumeFile'},
   resumeSrc:{k:'resume', label:'Your background', type:'textarea', hint:'Paste your current resume, or describe your experience, tools, and certifications.', ph:'Roles, years, audits performed, platforms, certifications…', upload:'resumeFile'},
+  role:{k:'role', label:'Target role / job preference', type:'textarea', hint:'The kind of role you want — title, focus, and any keywords. Drives the web search.', ph:'e.g. IT Audit Manager · SOX ITGC · SAP security · cloud (AWS) controls · remote'},
+  seniority:{k:'seniority', label:'Skill / seniority level', type:'select', opt:true, options:['(auto)','Entry / Associate','Mid-level','Senior','Manager','Director / Executive']},
+  years:{k:'years', label:'Years of experience', type:'text', opt:true, ph:'e.g. 5'},
+  location:{k:'location', label:'Location / work model', type:'text', opt:true, ph:'e.g. New York, NY · Remote (US) · London'},
+  skills:{k:'skills', label:'Key skills & tools', type:'textarea', opt:true, chips:'platform', ph:'e.g. SOX, ITGC, SAP, Active Directory, AWS, SQL, IPE testing'},
+  resumeMatch:{k:'resume', label:'Your resume / CV', type:'textarea', opt:true, hint:'Upload or paste your resume so the system can score you against each job. Optional, but recommended for an accurate match score.', ph:'Paste your resume…', upload:'resumeFile'},
   notes:{k:'notes', label:'Additional context', type:'textarea', opt:true, hint:'Anything else the draft should reflect.', ph:'e.g. First-year SOX audit; prior finding on access recertification.'},
 };
 
@@ -428,6 +439,7 @@ const SPEC = {
   interview:   [F.jd,F.resume,F.notes],
   resume:      [F.jd,F.resumeSrc,F.notes],
   training:    [F.topic,F.level,F.duration,F.frameworkOpt,F.platformOpt,F.notes],
+  jobmatch:    [F.role,F.seniority,F.years,F.location,F.skills,F.resumeMatch,F.notes],
 };
 
 let selected = null;
@@ -435,7 +447,7 @@ const state = {};
 let liveMode = false;
 
 /* Which Office format each artifact exports to by default: tabular → Excel, else Word. */
-const EXPORT_FMT = { rcm:'xlsx', rfi:'xlsx', gap:'xlsx', tpra:'xlsx' };
+const EXPORT_FMT = { rcm:'xlsx', rfi:'xlsx', gap:'xlsx', tpra:'xlsx', jobmatch:'xlsx' };
 let currentFormat = 'docx';
 
 /* ---------- shared helpers ---------- */
@@ -616,12 +628,18 @@ let lastMarkdown='';
 
 /* Render a completion "template" card — a high-level status + description, NOT the full
    artifact. The artifact itself is delivered as the downloaded Office/Markdown file. */
-function renderCompletion(sum, fmt, demo){
+function renderCompletion(sum, fmt, demo, sources){
   const fname=`${selected.id}-${new Date().toISOString().slice(0,10)}.${fmt}`;
   const chips=[];
   if(sum.sections) chips.push(`${sum.sections} section${sum.sections===1?'':'s'}`);
   if(sum.tableRows) chips.push(`${sum.tables} table${sum.tables===1?'':'s'} · ${sum.tableRows} rows`);
   if(sum.words) chips.push(`${sum.words.toLocaleString()} words`);
+  const srcs=Array.isArray(sources)?sources:[];
+  const srcBlock = srcs.length ? `
+      <div class="done-src">
+        <div class="done-src-h">Sources found on the web (${srcs.length})</div>
+        <ul>${srcs.slice(0,15).map(u=>`<li><a href="${escapeHtml(u)}" target="_blank" rel="noopener">${escapeHtml(u.replace(/^https?:\/\//,'').slice(0,70))}</a></li>`).join('')}</ul>
+      </div>` : '';
   outWrap.innerHTML=`
     <div class="out-body done">
       <div class="done-badge">✓ Generated</div>
@@ -633,6 +651,7 @@ function renderCompletion(sum, fmt, demo){
         <span class="done-fname">${escapeHtml(fname)}</span>
       </div>
       ${chips.length?`<div class="done-chips">${chips.map(c=>`<span>${escapeHtml(c)}</span>`).join('')}</div>`:''}
+      ${srcBlock}
       <p class="done-hint">Your download should start automatically. Use the buttons above to download again as .${fmt} or Markdown.</p>
     </div>`;
 }
@@ -642,7 +661,8 @@ document.getElementById('genBtn').onclick=async()=>{
   const btn=document.getElementById('genBtn'); btn.disabled=true; btn.textContent='Generating…';
   document.getElementById('errBox').innerHTML='';
   document.getElementById('outTitle').textContent=`output / ${selected.id}`;
-  outWrap.innerHTML=`<div class="empty"><div class="g"><i></i><i></i><i></i><i></i></div><p>Generating…</p><small>writing the file — this can take a moment</small></div>`;
+  const genNote = selected.id==='jobmatch' ? 'searching the web for live postings — this can take a minute' : 'writing the file — this can take a moment';
+  outWrap.innerHTML=`<div class="empty"><div class="g"><i></i><i></i><i></i><i></i></div><p>Generating…</p><small>${genNote}</small></div>`;
   lastMarkdown='';
   try{
     const res=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -653,7 +673,7 @@ document.getElementById('genBtn').onclick=async()=>{
     lastMarkdown=data.markdown||'';
     if(!lastMarkdown.trim()) throw new Error('No content returned. Check the server logs.');
     currentFormat=data.format||currentFormat;
-    renderCompletion(data.summary||{}, currentFormat, data.demo);
+    renderCompletion(data.summary||{}, currentFormat, data.demo, data.sources);
     document.getElementById('copyBtn').disabled=false;
     document.getElementById('dlBtn').disabled=false;
     document.getElementById('dlMdBtn').disabled=false;
