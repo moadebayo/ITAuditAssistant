@@ -631,6 +631,53 @@ async function streamClaude({ system, user, tools, maxTokens = 8000, onText }) {
   return { text, usage: { input_tokens: inTok, output_tokens: outTok }, sources: extractSources({ content: blocks }) };
 }
 
+/* Non-streaming call used by /api/generate. The generate path no longer streams to the browser,
+   so a plain create() is simpler and sturdier than the streaming iterator — and, crucially, it lets
+   us CONTINUE a web-search turn that the API pauses (stop_reason "pause_turn"). A paused turn ends
+   with no final text; without continuing it, generation surfaces as a 502 ("No content returned").
+   Returns { text, usage, sources, stop }. */
+async function runClaude({ system, user, tools, maxTokens = 8000 }) {
+  const base = {
+    model: MODEL,
+    max_tokens: maxTokens,
+    thinking: { type: 'disabled' },
+    system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+  };
+  if (tools) base.tools = tools;
+
+  const messages = [{ role: 'user', content: user }];
+  const allContent = [];
+  let text = '';
+  let inTok = 0, outTok = 0, cacheRead = 0, cacheWrite = 0, stop = null;
+
+  for (let turn = 0; turn < 6; turn++) {
+    const msg = await client.messages.create({ ...base, messages });
+    const u = msg.usage || {};
+    inTok += u.input_tokens || 0; outTok += u.output_tokens || 0;
+    cacheRead += u.cache_read_input_tokens || 0; cacheWrite += u.cache_creation_input_tokens || 0;
+    for (const block of msg.content || []) {
+      allContent.push(block);
+      if (block.type === 'text' && typeof block.text === 'string') text += block.text;
+    }
+    stop = msg.stop_reason;
+    // A long-running web search pauses the turn; feed the partial turn back to continue it.
+    if (stop === 'pause_turn' && Array.isArray(msg.content) && msg.content.length) {
+      messages.push({ role: 'assistant', content: msg.content });
+      continue;
+    }
+    break;
+  }
+
+  if (inTok || outTok) {
+    USAGE.in += inTok;
+    USAGE.out += outTok;
+    USAGE.calls += 1;
+    console.log(`  usage: in=${inTok} out=${outTok} cache_read=${cacheRead} cache_write=${cacheWrite} stop=${stop} · session total in=${USAGE.in} out=${USAGE.out} over ${USAGE.calls} call(s)`);
+  }
+
+  return { text, usage: { input_tokens: inTok, output_tokens: outTok }, sources: extractSources({ content: allContent }), stop };
+}
+
 /* Pull cited URLs out of a finalMessage that used the web_search tool. */
 function extractSources(finalMsg) {
   const urls = new Set();
@@ -908,17 +955,21 @@ app.post('/api/generate', requireAuth, generateLimiter, async (req, res) => {
     if (!client) {
       markdown = demoArtifact(artifact, artifactName, inputs);
     } else {
-      const result = await streamClaude({
+      const result = await runClaude({
         system: buildSystem(artifact, inputs),
         user: buildUser(artifact, artifactName, inputs),
         maxTokens: useSearch ? 12000 : 8000,
-        tools: useSearch ? [{ type: 'web_search_20260209', name: 'web_search', max_uses: 8 }] : undefined,
+        tools: useSearch ? [{ type: 'web_search_20260209', name: 'web_search', max_uses: 6 }] : undefined,
       });
       markdown = result.text;
       sources = result.sources || [];
     }
     if (!String(markdown || '').trim()) {
-      return res.status(502).json({ error: 'No content was returned. Check the server logs and try again.' });
+      return res.status(502).json({
+        error: useSearch
+          ? 'The web search did not return a usable result. Try again, narrow the role/location, or add your resume text.'
+          : 'No content was returned. Please try again.',
+      });
     }
     res.json({
       ok: true,
