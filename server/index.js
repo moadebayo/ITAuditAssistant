@@ -514,6 +514,10 @@ async function streamClaude({ send, system, user, tools, maxTokens = 8000 }) {
   const params = {
     model: MODEL,
     max_tokens: maxTokens,
+    // Disable extended thinking: these are fast, interactive drafting/research calls
+    // grounded in supplied references — thinking adds latency without materially
+    // improving structured output, and Sonnet-tier models default it on.
+    thinking: { type: 'disabled' },
     // Cache the large, reference-laden system prompt so repeat generations with the
     // same artifact/platform/framework reuse it — big latency + cost win.
     system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
