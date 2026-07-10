@@ -227,6 +227,7 @@ const BASE_REFS = {
   interview:    ['interview-prep', 'audit-lifecycle', 'itgc', 'itac-and-ipe'],
   resume:       ['interview-prep', 'audit-lifecycle'],
   tpra:         ['audit-lifecycle', 'third-party-risk-audit', 'itac-and-ipe', 'frameworks'],
+  training:     ['training', 'audit-lifecycle'],
 };
 
 /* Keyword → reference routing. Mirrors the skill's own routing table. */
@@ -257,7 +258,7 @@ const ROUTES = [
 function pickRefs(artifact, inputs) {
   const picked = new Set(BASE_REFS[artifact] || ['audit-lifecycle']);
   const hay = [inputs.platform, inputs.framework, inputs.scope, inputs.domains, inputs.notes, inputs.jd,
-    inputs.applications, inputs.os, inputs.database, inputs.vendor]
+    inputs.applications, inputs.os, inputs.database, inputs.vendor, inputs.topic]
     .filter(Boolean).join(' \n ');
   for (const [re, ref] of ROUTES) if (re.test(hay)) picked.add(ref);
   return [...picked].filter(r => SKILL.refs[r]).slice(0, 6);
@@ -400,6 +401,30 @@ important ones a one-line "What good looks like".
 NEVER fabricate the candidate's experience or certifications. Where a personal specific is needed and
 the resume does not supply it, use a bracketed placeholder and coach what to insert.`,
 
+  training: `Produce a DETAILED IT AUDIT TRAINING MODULE on the requested topic, in a typical IT-audit
+training style, per training.md. Ground it in the domain reference material supplied — use REAL control
+references, commands, parameters, transaction codes, console paths, and framework requirement IDs, and
+explain the WHY (risk and control objective), not just the what. Adapt depth to the audience level if
+given (Foundational / Intermediate / Advanced / Exam prep) and to the duration.
+Structure (use the training.md module template):
+1. Module header — title, audience level, estimated duration, prerequisites, and the skill area it covers.
+2. Learning objectives — 4-8 measurable outcomes ("By the end, the participant can ...").
+3. Why it matters — the risk and business/ICFR context.
+4. Key concepts & terminology — precise definitions with the real specifics from the references.
+5. Deep dive — risk -> control objective -> control activity (type/nature/risk) -> test procedures in the
+   Interview -> Test of Control (TOD/TOE) -> Conclusion pattern, with the platform/framework specifics.
+6. Worked example / walkthrough — a realistic end-to-end scenario (obtain population, IPE-test, sample,
+   test, document the exception, conclude).
+7. Common pitfalls & exam/interview traps.
+8. Exercise / case study — 2-3 hands-on tasks or a mini-case with a defined deliverable.
+9. Knowledge check — 5-8 questions (mix of MCQ and short answer) WITH an answer key and a one-line
+   rationale each.
+10. Summary & further study — key takeaways, which skill reference(s) to study next, and the CISA/CISM
+    domain(s) it maps to.
+If the topic is broad (e.g., "the audit lifecycle" or "PCI DSS for auditors"), cover it as a coherent
+module at the right altitude; if narrow (e.g., "testing terminated-user access on Active Directory"),
+go deep with the specific procedure.`,
+
   resume: `Produce an IT AUDIT RESUME / CV targeted at the supplied job description, built ONLY from the
 candidate's real background as supplied. Structure: header (name/contact placeholders if unknown), a
 3-4 line Professional Summary tuned to the JD, Certifications, Core Competencies (a compact keyword
@@ -442,6 +467,9 @@ function buildUser(artifact, artifactName, inputs) {
   return [
     `Generate: ${artifactName}`,
     '',
+    L('topic',     'Training topic'),
+    L('level',     'Audience level'),
+    L('duration',  'Duration'),
     L('platform',  'Platform / technology'),
     L('framework', 'Framework / standard'),
     L('vendor',    'Vendor / service provider'),
