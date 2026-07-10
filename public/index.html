@@ -366,6 +366,10 @@ const CATALOG = [
       {id:'interview', ref:'CT-01', name:'Interview questions & answers', desc:'Tailored Q&A from a job description and (optionally) your resume.', fmt:'Prep pack'},
       {id:'resume',    ref:'CT-02', name:'Resume / CV',                   desc:'An IT-audit resume targeted at a specific job description.', fmt:'Resume'},
     ]},
+  { group:'Training & enablement', note:'Learn and teach IT audit',
+    items:[
+      {id:'training', ref:'TR-01', name:'Training module', desc:'A detailed IT-audit training lesson on any topic — objectives, deep dive with real controls, worked example, exercise, and a knowledge check with answer key.', fmt:'Training module (Word)'},
+    ]},
 ];
 
 const SUGGEST = {
@@ -382,6 +386,10 @@ const F = {
   os:{k:'os', label:'Operating system', type:'text', opt:true, ph:'e.g. Linux (RHEL), Windows Server'},
   database:{k:'database', label:'Database', type:'text', opt:true, ph:'e.g. Oracle 19c, SQL Server, PostgreSQL'},
   vendor:{k:'vendor', label:'Vendor / service provider', type:'text', opt:true, ph:'e.g. Acme Cloud Payroll (SaaS)'},
+  topic:{k:'topic', label:'Training topic', hint:'What should the module teach? A domain, a control, a framework, or a whole process.', type:'textarea', ph:'e.g. Change management ITGC on Oracle EBS · the IT audit lifecycle · PCI DSS v4.0 for auditors · testing terminated-user access on Active Directory'},
+  level:{k:'level', label:'Audience level', type:'select', opt:true, options:['(auto)','Foundational (new IT auditor)','Intermediate','Advanced','CISA / certification exam prep']},
+  duration:{k:'duration', label:'Duration', type:'text', opt:true, ph:'e.g. 60 minutes · half-day workshop · self-study'},
+  frameworkOpt:{k:'framework', label:'Framework / standard', type:'text', opt:true, chips:'framework', ph:'e.g. SOX ITGC, SOC 2, PCI DSS (optional)'},
   entity:{k:'entity', label:'Organization', type:'text', opt:true, ph:'e.g. Northwind Financial Services'},
   period:{k:'period', label:'Audit period', type:'text', opt:true, ph:'e.g. Jan 1 – Dec 31, 2026'},
   auditRef:{k:'auditRef', label:'Audit reference', type:'text', opt:true, ph:'e.g. 26-014'},
@@ -407,6 +415,7 @@ const SPEC = {
   tpra:        [F.framework,F.vendor,F.platformOpt,F.applications,F.os,F.database,F.notes],
   interview:   [F.jd,F.resume,F.notes],
   resume:      [F.jd,F.resumeSrc,F.notes],
+  training:    [F.topic,F.level,F.duration,F.frameworkOpt,F.platformOpt,F.notes],
 };
 
 let selected = null;
