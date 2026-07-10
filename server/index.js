@@ -228,6 +228,7 @@ const BASE_REFS = {
   resume:       ['interview-prep', 'audit-lifecycle'],
   tpra:         ['audit-lifecycle', 'third-party-risk-audit', 'itac-and-ipe', 'frameworks'],
   training:     ['training', 'audit-lifecycle'],
+  jobmatch:     ['interview-prep', 'audit-lifecycle'],
 };
 
 /* Keyword → reference routing. Mirrors the skill's own routing table. */
@@ -255,22 +256,28 @@ const ROUTES = [
   [/third[- ]party|vendor|supplier|service provider|tprm|supply chain|\bcsa\b|\bccm\b|caiq|\bstar\b|\bvsa\b|\bsig\b|shared assessments|27036|800-161/i, 'third-party-risk-audit'],
 ];
 
-/* Fields that belong only to the training artifact. The client posts the whole global form
-   state on every generation, so a training topic/level/duration entered earlier would otherwise
-   leak into an RCM/report/RFI prompt (and its reference routing) even though the field is hidden.
-   Strip them for every other artifact. */
-const TRAINING_ONLY = ['topic', 'level', 'duration'];
+/* Fields that belong only to one artifact. The client posts the whole global form state on every
+   generation, so a field entered for one artifact (a training topic, a job-search preference) would
+   otherwise leak into an unrelated prompt (and its reference routing) even though the field is hidden
+   for the current artifact. For a given artifact, strip every field scoped to a DIFFERENT artifact. */
+const SCOPED_FIELDS = {
+  training: ['topic', 'level', 'duration'],
+  jobmatch: ['role', 'seniority', 'years', 'location', 'skills'],
+};
 function scrubInputs(artifact, inputs) {
-  if (artifact === 'training' || !inputs) return inputs || {};
+  if (!inputs) return {};
   const out = { ...inputs };
-  for (const k of TRAINING_ONLY) delete out[k];
+  for (const [owner, keys] of Object.entries(SCOPED_FIELDS)) {
+    if (owner === artifact) continue;
+    for (const k of keys) delete out[k];
+  }
   return out;
 }
 
 function pickRefs(artifact, inputs) {
   const picked = new Set(BASE_REFS[artifact] || ['audit-lifecycle']);
   const hay = [inputs.platform, inputs.framework, inputs.scope, inputs.domains, inputs.notes, inputs.jd,
-    inputs.applications, inputs.os, inputs.database, inputs.vendor, inputs.topic]
+    inputs.applications, inputs.os, inputs.database, inputs.vendor, inputs.topic, inputs.role, inputs.skills]
     .filter(Boolean).join(' \n ');
   for (const [re, ref] of ROUTES) if (re.test(hay)) picked.add(ref);
   // Training modules may legitimately need more domain references than a single workpaper.
@@ -449,6 +456,31 @@ Do NOT invent employers, dates, certifications, or results. Where the candidate'
 the bullet with a bracketed placeholder for the metric, e.g. "[x of n samples]". After the resume,
 add a short "Tailoring notes" section listing JD keywords covered and the gaps the candidate should
 address.`,
+
+  jobmatch: `Produce a JOB SEARCH & RESUME MATCH REPORT for a candidate looking for a role.
+USE THE web_search TOOL to find CURRENT, REAL, PUBLICLY POSTED job openings that match the candidate's
+target role, seniority, years of experience, and location. Search across the open web — major job
+boards (LinkedIn, Indeed, Glassdoor, ZipRecruiter) and company career pages. Run several searches with
+different queries (title + location, title + key skills, seniority variants) to gather a good spread.
+Only include postings you actually found via search — never invent a company, posting, or URL. If a
+detail (salary, exact date) is not in the source, leave it blank rather than guessing.
+
+For each posting, extract the key requirements (must-have skills, tools, certifications, years, domain)
+and compare them against the candidate's resume/skills to compute a MATCH SCORE from 0-100:
+- ~50% skills & tools overlap (required vs. present), ~25% seniority/years fit, ~15% domain/industry
+  fit, ~10% location/work-model fit. State the weighting is approximate.
+If no resume is supplied, score against the stated skills, seniority, and years instead, and say so.
+
+OUTPUT (Markdown):
+1. A one-paragraph summary — what was searched, how many live postings were found, and the score range.
+2. A ranked table (highest score first) with columns:
+   Rank | Role & Company | Location / Model | Match Score | Key Matches | Key Gaps | Posting URL.
+   Include 8-15 rows where available. Put the real posting URL in the last column.
+3. "## Top matches — detail" — for the top 3-5 roles, a short block each: why it scored where it did,
+   the specific matched requirements, the gaps to close, and how to tailor the resume for it.
+4. "## Resume gap analysis & next steps" — the skills/keywords/certifications that recur across the
+   postings but are weak or missing in the candidate's profile, and concrete actions to raise the match.
+Be honest about scores; do not inflate. Ground every requirement you cite in the actual posting text.`,
 };
 
 function buildSystem(artifact, inputs) {
@@ -483,6 +515,11 @@ function buildUser(artifact, artifactName, inputs) {
     L('topic',     'Training topic'),
     L('level',     'Audience level'),
     L('duration',  'Duration'),
+    L('role',      'Target role / job preference'),
+    L('seniority', 'Skill / seniority level'),
+    L('years',     'Years of experience'),
+    L('location',  'Location / work model'),
+    L('skills',    'Key skills & tools'),
     L('platform',  'Platform / technology'),
     L('framework', 'Framework / standard'),
     L('vendor',    'Vendor / service provider'),
@@ -616,7 +653,7 @@ function extractSources(finalMsg) {
    tabular artifacts (RCM, RFI, gap assessment) export to Excel. The
    default per artifact is below; the client may override the format.
    ================================================================== */
-const EXPORT_FMT = { rcm: 'xlsx', rfi: 'xlsx', gap: 'xlsx', tpra: 'xlsx' };
+const EXPORT_FMT = { rcm: 'xlsx', rfi: 'xlsx', gap: 'xlsx', tpra: 'xlsx', jobmatch: 'xlsx' };
 
 function splitTableRow(line) {
   return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|')
@@ -844,6 +881,8 @@ function describe(artifact, name, inputs, markdown) {
   if (i.platform) ctx.push(i.platform);
   if (i.vendor) ctx.push(i.vendor);
   if (i.topic) ctx.push(i.topic);
+  if (i.role) ctx.push(i.role);
+  if (i.location) ctx.push(i.location);
   if (i.scope) ctx.push(i.scope);
   return {
     title,
@@ -859,20 +898,24 @@ app.post('/api/generate', requireAuth, generateLimiter, async (req, res) => {
   const { artifact, artifactName, inputs: rawInputs = {} } = req.body || {};
   if (!artifact || !TASKS[artifact]) return res.status(400).json({ error: 'Unknown artifact type.' });
 
-  // Drop training-only fields the client may have carried over from a prior artifact.
+  // Drop fields the client may have carried over from a different artifact.
   const inputs = scrubInputs(artifact, rawInputs);
   const format = EXPORT_FMT[artifact] || 'docx';
+  // Job matching needs live web results; let the model search the open web for current postings.
+  const useSearch = artifact === 'jobmatch';
   try {
-    let markdown;
+    let markdown, sources = [];
     if (!client) {
       markdown = demoArtifact(artifact, artifactName, inputs);
     } else {
       const result = await streamClaude({
         system: buildSystem(artifact, inputs),
         user: buildUser(artifact, artifactName, inputs),
-        maxTokens: 8000,
+        maxTokens: useSearch ? 12000 : 8000,
+        tools: useSearch ? [{ type: 'web_search_20260209', name: 'web_search', max_uses: 8 }] : undefined,
       });
       markdown = result.text;
+      sources = result.sources || [];
     }
     if (!String(markdown || '').trim()) {
       return res.status(502).json({ error: 'No content was returned. Check the server logs and try again.' });
@@ -883,6 +926,7 @@ app.post('/api/generate', requireAuth, generateLimiter, async (req, res) => {
       artifactName: artifactName || artifact,
       format,
       markdown,
+      sources,
       summary: describe(artifact, artifactName, inputs, markdown),
       demo: !client,
     });
@@ -1126,6 +1170,24 @@ A risk-based approach comprising walkthroughs to assess control design (Test of 
 ## 3. Questions to Ask the Interviewer
 - How is the IT audit universe scoped, and how many key applications are in scope?
 - What does success look like for this role in the first 6–12 months?
+`;
+
+  if (artifact === 'jobmatch') return banner + `# Job Search & Resume Match — ${i.role || 'IT Audit Manager'}
+
+**Searched:** ${i.role || 'IT Audit Manager'}${i.location ? ' · ' + i.location : ''}${i.years ? ' · ' + i.years + ' yrs' : ''}
+**Live postings found:** 3 (sample) · **Match range:** 71–92%
+
+| Rank | Role & Company | Location / Model | Match Score | Key Matches | Key Gaps | Posting URL |
+|---|---|---|---|---|---|---|
+| 1 | IT Audit Manager · Northwind Financial | Remote (US) | 92 | SOX ITGC, IPE testing, RCM, SAP | CISA in progress | https://example.com/jobs/1 |
+| 2 | Senior IT Auditor · Acme Cloud | New York, NY (Hybrid) | 84 | ITGC, AWS controls, SOC 2 | Mainframe exposure | https://example.com/jobs/2 |
+| 3 | Sr. Manager, Tech Risk · Globex | Chicago, IL | 71 | SOX, program leadership | Cloud depth, data analytics | https://example.com/jobs/3 |
+
+## Top matches — detail
+**1. IT Audit Manager · Northwind Financial (92%)** — Strong overlap on SOX ITGC execution, IPE, and RCM development; SAP experience is a direct hit. Close the gap by noting your CISA timeline on the resume.
+
+## Resume gap analysis & next steps
+Recurring across postings but weak in the profile: **data analytics (ACL/IDEA)**, **cloud (AWS/Azure) control testing**, and **CISA**. Adding one quantified cloud-audit bullet and a data-analytics line would raise the average match by an estimated 6–10 points.
 `;
 
   return banner + `# ${name}
