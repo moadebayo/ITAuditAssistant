@@ -262,6 +262,7 @@
           <div class="spacer" style="flex:1"></div>
           <button class="btn ghost" id="copyBtn" style="padding:6px 12px;font-size:12.5px" disabled>Copy</button>
           <button class="btn ghost" id="dlBtn" style="padding:6px 12px;font-size:12.5px" disabled>Download</button>
+          <button class="btn ghost" id="dlAltBtn" style="padding:6px 12px;font-size:12.5px;display:none" disabled>.docx</button>
           <button class="btn ghost" id="dlMdBtn" style="padding:6px 12px;font-size:12.5px" disabled>.md</button>
         </div>
         <div id="outWrap">
@@ -442,7 +443,25 @@ let liveMode = false;
 
 /* Which Office format each artifact exports to by default: tabular → Excel, else Word. */
 const EXPORT_FMT = { rcm:'xlsx', rfi:'xlsx', gap:'xlsx', tpra:'xlsx', jobmatch:'xlsx' };
+/* Workpaper artifacts can be downloaded as EITHER Word or Excel (both buttons shown). */
+const WORKPAPERS = new Set(['rcm','program','walkthrough','gap','tpra']);
+const altFormat = fmt => fmt==='xlsx' ? 'docx' : 'xlsx';
 let currentFormat = 'docx';
+
+/* Configure the download buttons for the selected artifact: primary = its default format;
+   workpapers also expose the alternate Office format so you can grab Word or Excel. */
+function setupDownloadButtons(){
+  const dlBtn=document.getElementById('dlBtn'), altBtn=document.getElementById('dlAltBtn');
+  dlBtn.textContent = `Download .${currentFormat}`;
+  if(selected && WORKPAPERS.has(selected.id)){
+    const alt=altFormat(currentFormat);
+    altBtn.textContent = `.${alt}`;
+    altBtn.style.display='';
+    altBtn.onclick=()=>exportAs(alt);
+  } else {
+    altBtn.style.display='none';
+  }
+}
 
 /* ---------- shared helpers ---------- */
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -541,7 +560,7 @@ CATALOG.forEach(g=>{
 function selectArtifact(it){
   selected=it;
   currentFormat = EXPORT_FMT[it.id] || 'docx';
-  document.getElementById('dlBtn').textContent = `Download .${currentFormat}`;
+  setupDownloadButtons();
   document.querySelectorAll('#groups .card').forEach(c=>c.setAttribute('aria-pressed', c.dataset.id===it.id ? 'true':'false'));
   document.getElementById('cfgTitle').textContent=it.name;
   document.getElementById('cfgNote').textContent='';
@@ -670,8 +689,9 @@ document.getElementById('genBtn').onclick=async()=>{
     renderCompletion(data.summary||{}, currentFormat, data.demo, data.sources);
     document.getElementById('copyBtn').disabled=false;
     document.getElementById('dlBtn').disabled=false;
+    document.getElementById('dlAltBtn').disabled=false;
     document.getElementById('dlMdBtn').disabled=false;
-    document.getElementById('dlBtn').textContent = `Download .${currentFormat}`;
+    setupDownloadButtons();
     // Deliver the artifact straight to a file rather than rendering it on screen.
     exportAs(currentFormat);
   }catch(err){
