@@ -366,16 +366,13 @@ const CATALOG = [
       {id:'observation',  ref:'DOC-04', name:'Audit observation memo',   desc:'Findings in Condition · Criterion · Cause · Effect · Recommendation.', fmt:'Findings memo'},
       {id:'report',       ref:'DOC-05', name:'Audit report',             desc:'Executive summary, opinion, scope, detailed findings, action plans.', fmt:'Full report'},
     ]},
-  { group:'Workpapers', note:'Tabular testing artifacts',
+  { group:'Workpapers & third-party risk', note:'Tabular testing artifacts and vendor assurance',
     items:[
       {id:'rcm',     ref:'WP-01', name:'Risk & control matrix', desc:'Objectives, risks, control activities, type/nature/risk, framework mapping.', fmt:'Matrix (markdown table)'},
       {id:'program', ref:'WP-02', name:'Detailed audit program', desc:'Per control: Interview → Test of control → Conclusion, with evidence/IPE.', fmt:'Test program'},
       {id:'walkthrough', ref:'WP-03', name:'Walkthrough / TOD',  desc:'Design-effectiveness walkthrough narrative and design conclusion.', fmt:'Narrative'},
       {id:'gap',     ref:'WP-04', name:'Compliance gap assessment', desc:'Assessment questionnaire plus a requirement-by-requirement control & gap matrix and remediation plan. Framework is the only required field.', fmt:'Questionnaire + gap matrix'},
-    ]},
-  { group:'Third-party risk', note:'Vendor & supply-chain assurance',
-    items:[
-      {id:'tpra', ref:'TPR-01', name:'Third-party / vendor assessment', desc:'Vendor security questionnaire (CSA CAIQ / VSA / SIG) plus a vendor risk & control matrix, mapped to your framework and tiered by inherent risk.', fmt:'Questionnaire + matrix'},
+      {id:'tpra',    ref:'WP-05', name:'Third-party / vendor assessment', desc:'Vendor security questionnaire (CSA CAIQ / VSA / SIG) plus a vendor risk & control matrix, mapped to your framework and tiered by inherent risk.', fmt:'Questionnaire + matrix'},
     ]},
   { group:'Career & training', note:'For the auditor: prep, job search, and enablement',
     items:[
