@@ -255,13 +255,51 @@ const ROUTES = [
   [/third[- ]party|vendor|supplier|service provider|tprm|supply chain|\bcsa\b|\bccm\b|caiq|\bstar\b|\bvsa\b|\bsig\b|shared assessments|27036|800-161/i, 'third-party-risk-audit'],
 ];
 
+/* Certification-domain routing for training. Certification-study requests often name an exam
+   domain rather than a platform (e.g. "CISA Domain 4: IS Operations and Business Resilience"),
+   which the platform ROUTES above would never match — so the references those domains actually
+   need (infrastructure, SIEM, DR, ITGC, …) would be absent from the prompt. This mirrors the
+   certification mapping in training.md and is applied only to the training artifact. */
+const CERT_ROUTES = [
+  [/cisa[^.]*(domain\s*1\b|auditing process)|information systems auditing process/i,
+    ['audit-lifecycle', 'deliverable-templates', 'engagement-documents', 'itac-and-ipe']],
+  [/cisa[^.]*(domain\s*2\b|governance)|governance (and|&|and management) of it/i,
+    ['frameworks', 'nist-csf-audit', 'software-implementation-audit', 'sdlc-dr-physical-tprm']],
+  [/cisa[^.]*(domain\s*3\b|acquisition)|acquisition, development|development (and|&) implementation/i,
+    ['software-implementation-audit', 'secure-development-sdl', 'sdlc-dr-physical-tprm']],
+  [/cisa[^.]*(domain\s*4\b)|is operations|business resilience|operations (and|&) business resilience/i,
+    ['infrastructure-audit', 'siem-and-logging-audit', 'sdlc-dr-physical-tprm', 'itgc']],
+  [/cisa[^.]*(domain\s*5\b)|protection of information assets/i,
+    ['itgc', 'infrastructure-audit', 'active-directory-audit', 'pci-dss-audit', 'siem-and-logging-audit', 'cloud-and-emerging']],
+  [/\bcrisc\b/i, ['audit-lifecycle', 'gap-assessment', 'third-party-risk-audit', 'frameworks']],
+  [/\bcism\b/i,  ['frameworks', 'siem-and-logging-audit', 'secure-development-sdl']],
+  [/\bcia\b(?![a-z])/i, ['audit-lifecycle', 'engagement-documents']],
+];
+
+/* Fields that belong only to the training artifact. The client posts the whole global form
+   state on every generation, so a training topic/level/duration entered earlier would otherwise
+   leak into an RCM/report/RFI prompt (and its reference routing) even though the field is hidden.
+   Strip them for every other artifact. */
+const TRAINING_ONLY = ['topic', 'level', 'duration'];
+function scrubInputs(artifact, inputs) {
+  if (artifact === 'training' || !inputs) return inputs || {};
+  const out = { ...inputs };
+  for (const k of TRAINING_ONLY) delete out[k];
+  return out;
+}
+
 function pickRefs(artifact, inputs) {
   const picked = new Set(BASE_REFS[artifact] || ['audit-lifecycle']);
   const hay = [inputs.platform, inputs.framework, inputs.scope, inputs.domains, inputs.notes, inputs.jd,
-    inputs.applications, inputs.os, inputs.database, inputs.vendor, inputs.topic]
+    inputs.applications, inputs.os, inputs.database, inputs.vendor, inputs.topic, inputs.level]
     .filter(Boolean).join(' \n ');
   for (const [re, ref] of ROUTES) if (re.test(hay)) picked.add(ref);
-  return [...picked].filter(r => SKILL.refs[r]).slice(0, 6);
+  if (artifact === 'training') {
+    for (const [re, refs] of CERT_ROUTES) if (re.test(hay)) for (const r of refs) picked.add(r);
+  }
+  // Training modules may legitimately need more domain references than a single workpaper.
+  const cap = artifact === 'training' ? 8 : 6;
+  return [...picked].filter(r => SKILL.refs[r]).slice(0, cap);
 }
 
 /* ==================================================================
@@ -843,9 +881,11 @@ function describe(artifact, name, inputs, markdown) {
 }
 
 app.post('/api/generate', requireAuth, generateLimiter, async (req, res) => {
-  const { artifact, artifactName, inputs = {} } = req.body || {};
+  const { artifact, artifactName, inputs: rawInputs = {} } = req.body || {};
   if (!artifact || !TASKS[artifact]) return res.status(400).json({ error: 'Unknown artifact type.' });
 
+  // Drop training-only fields the client may have carried over from a prior artifact.
+  const inputs = scrubInputs(artifact, rawInputs);
   const format = EXPORT_FMT[artifact] || 'docx';
   try {
     let markdown;
