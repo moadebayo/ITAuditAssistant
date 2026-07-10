@@ -138,6 +138,18 @@
   .cursor::after{content:"▍";color:var(--accent);animation:blink 1s steps(2) infinite}
   @keyframes blink{50%{opacity:0}}
 
+  .out-body.done{text-align:left}
+  .done-badge{display:inline-block;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.02em;color:#1a7a4a;background:#e6f6ec;border:1px solid #bfe6cd;padding:4px 10px;border-radius:20px}
+  .done-title{font-family:var(--display);font-size:22px;letter-spacing:-.01em;margin:16px 0 4px;line-height:1.25;color:var(--ink)}
+  .done-ctx{font-size:13px;color:var(--slate);margin-bottom:18px}
+  .done-demo{font-size:12.5px;color:#7a4d0b;background:var(--amber-soft);border:1px solid #f0dcb4;padding:8px 12px;border-radius:7px;margin-bottom:16px}
+  .done-file{display:flex;align-items:center;gap:10px;background:#f4f6f8;border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:14px}
+  .done-fmt{font-family:var(--mono);font-size:11px;font-weight:600;color:#fff;background:var(--accent);padding:4px 8px;border-radius:5px}
+  .done-fname{font-family:var(--mono);font-size:13px;color:var(--ink)}
+  .done-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+  .done-chips span{font-family:var(--mono);font-size:11px;color:var(--slate);background:#f2f4f6;border:1px solid var(--line);padding:3px 9px;border-radius:20px}
+  .done-hint{font-size:13px;color:var(--mute);margin:0}
+
   .empty{padding:70px 24px;text-align:center;color:var(--mute)}
   .empty .g{width:44px;height:44px;margin:0 auto 16px;border:1px solid var(--line);border-radius:8px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr}
   .empty .g i{border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
@@ -602,25 +614,52 @@ function validate(){
 const outWrap=document.getElementById('outWrap');
 let lastMarkdown='';
 
+/* Render a completion "template" card — a high-level status + description, NOT the full
+   artifact. The artifact itself is delivered as the downloaded Office/Markdown file. */
+function renderCompletion(sum, fmt, demo){
+  const fname=`${selected.id}-${new Date().toISOString().slice(0,10)}.${fmt}`;
+  const chips=[];
+  if(sum.sections) chips.push(`${sum.sections} section${sum.sections===1?'':'s'}`);
+  if(sum.tableRows) chips.push(`${sum.tables} table${sum.tables===1?'':'s'} · ${sum.tableRows} rows`);
+  if(sum.words) chips.push(`${sum.words.toLocaleString()} words`);
+  outWrap.innerHTML=`
+    <div class="out-body done">
+      <div class="done-badge">✓ Generated</div>
+      <h2 class="done-title">${escapeHtml(sum.title||selected.name)}</h2>
+      ${sum.context?`<div class="done-ctx">${escapeHtml(sum.context)}</div>`:''}
+      ${demo?`<div class="done-demo">Demo mode — sample output (no API key configured).</div>`:''}
+      <div class="done-file">
+        <span class="done-fmt">.${fmt.toUpperCase()}</span>
+        <span class="done-fname">${escapeHtml(fname)}</span>
+      </div>
+      ${chips.length?`<div class="done-chips">${chips.map(c=>`<span>${escapeHtml(c)}</span>`).join('')}</div>`:''}
+      <p class="done-hint">Your download should start automatically. Use the buttons above to download again as .${fmt} or Markdown.</p>
+    </div>`;
+}
+
 document.getElementById('genBtn').onclick=async()=>{
   if(!selected) return;
   const btn=document.getElementById('genBtn'); btn.disabled=true; btn.textContent='Generating…';
   document.getElementById('errBox').innerHTML='';
   document.getElementById('outTitle').textContent=`output / ${selected.id}`;
-  outWrap.innerHTML=`<div class="out-body doc cursor" id="stream"></div>`;
-  const stream=document.getElementById('stream');
+  outWrap.innerHTML=`<div class="empty"><div class="g"><i></i><i></i><i></i><i></i></div><p>Generating…</p><small>writing the file — this can take a moment</small></div>`;
   lastMarkdown='';
   try{
     const res=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({artifact:selected.id, artifactName:selected.name, inputs:state})});
     if(is401(res)) throw new Error('Sign in to continue.');
-    await readSSE(res, t=>{ lastMarkdown+=t; stream.innerHTML=md(lastMarkdown); stream.scrollTop=stream.scrollHeight; });
-    stream.classList.remove('cursor');
+    if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e.error||`Server returned ${res.status}`); }
+    const data=await res.json();
+    lastMarkdown=data.markdown||'';
     if(!lastMarkdown.trim()) throw new Error('No content returned. Check the server logs.');
+    currentFormat=data.format||currentFormat;
+    renderCompletion(data.summary||{}, currentFormat, data.demo);
     document.getElementById('copyBtn').disabled=false;
     document.getElementById('dlBtn').disabled=false;
     document.getElementById('dlMdBtn').disabled=false;
     document.getElementById('dlBtn').textContent = `Download .${currentFormat}`;
+    // Deliver the artifact straight to a file rather than rendering it on screen.
+    exportAs(currentFormat);
   }catch(err){
     document.getElementById('errBox').innerHTML=`<div class="err"><b>Generation failed</b>${escapeHtml(err.message)}</div>`;
     outWrap.innerHTML=`<div class="empty"><div class="g"><i></i><i></i><i></i><i></i></div><p>Nothing generated.</p><small>see the message on the left</small></div>`;

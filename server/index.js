@@ -4,7 +4,7 @@
  * Serves the front end and exposes:
  *   GET  /api/health          → { live, model, refs }
  *   POST /api/extract         → { text }   (pull text out of an uploaded pdf/docx/txt)
- *   POST /api/generate        → SSE stream of { text } chunks  (audit artifacts)
+ *   POST /api/generate        → { ok, markdown, format, summary }  (audit artifact + completion status)
  *   GET  /api/skills          → { skills: [...] }  (browse the IT Audit skill library)
  *   GET  /api/skills/:name    → { name, title, markdown }
  *   POST /api/skills/improve  → SSE stream of { text }  (self-generate/improve a reference
@@ -509,8 +509,13 @@ async function streamDemo(send, text) {
   }
 }
 
-/* Stream a live Claude message, forwarding text deltas as SSE. Optionally pass server tools. */
-async function streamClaude({ send, system, user, tools, maxTokens = 8000 }) {
+/* Run a Claude message and collect the full result.
+   Uses the LOW-LEVEL streaming iterator (`messages.create({stream:true})`) rather than the
+   high-level `messages.stream()` helper: the helper's internal message-accumulator has thrown
+   "Invalid array length" (a RangeError) on some tool/thinking block sequences, so we accumulate
+   the blocks ourselves — plain, defensive, and independent of SDK-version quirks.
+   Returns { text, usage, sources }. `onText`, if given, is called per text delta (for live SSE). */
+async function streamClaude({ system, user, tools, maxTokens = 8000, onText }) {
   const params = {
     model: MODEL,
     max_tokens: maxTokens,
@@ -522,25 +527,58 @@ async function streamClaude({ send, system, user, tools, maxTokens = 8000 }) {
     // same artifact/platform/framework reuse it — big latency + cost win.
     system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: user }],
+    stream: true,
   };
   if (tools) params.tools = tools;
 
-  const stream = client.messages.stream(params);
-  stream.on('text', t => send({ text: t }));
-  // finalMessage lets us surface web-search sources; guard against SDK block-accumulation quirks.
-  let finalMsg = null;
-  try { finalMsg = await stream.finalMessage(); }
-  catch (err) { await stream.done?.().catch(() => {}); }
-  const u = finalMsg?.usage;
-  if (u) {
-    USAGE.in += u.input_tokens || 0;
-    USAGE.out += u.output_tokens || 0;
-    USAGE.calls += 1;
-    const cr = u.cache_read_input_tokens ?? 0;
-    const cw = u.cache_creation_input_tokens ?? 0;
-    console.log(`  usage: in=${u.input_tokens ?? '?'} out=${u.output_tokens ?? '?'} cache_read=${cr} cache_write=${cw} · session total in=${USAGE.in} out=${USAGE.out} over ${USAGE.calls} call(s)`);
+  const stream = await client.messages.create(params);
+
+  let text = '';
+  const blocks = [];          // reconstruct content blocks for source extraction
+  let inTok = 0, outTok = 0, cacheRead = 0, cacheWrite = 0;
+
+  for await (const ev of stream) {
+    if (!ev || typeof ev !== 'object') continue;
+    switch (ev.type) {
+      case 'message_start': {
+        const u = ev.message?.usage;
+        if (u) { inTok = u.input_tokens || 0; cacheRead = u.cache_read_input_tokens || 0; cacheWrite = u.cache_creation_input_tokens || 0; }
+        break;
+      }
+      case 'content_block_start': {
+        // Server-tool results (e.g. web_search) arrive as a complete block here.
+        blocks[ev.index] = ev.content_block ? { ...ev.content_block } : {};
+        break;
+      }
+      case 'content_block_delta': {
+        const d = ev.delta || {};
+        const b = blocks[ev.index] || (blocks[ev.index] = {});
+        if (d.type === 'text_delta' && typeof d.text === 'string') {
+          text += d.text;
+          b.text = (b.text || '') + d.text;
+          onText?.(d.text);
+        } else if (d.type === 'citations_delta' && d.citation) {
+          (b.citations || (b.citations = [])).push(d.citation);
+        }
+        break;
+      }
+      case 'message_delta': {
+        if (ev.usage?.output_tokens != null) outTok = ev.usage.output_tokens;
+        break;
+      }
+      default:
+        break;
+    }
   }
-  return finalMsg;
+
+  if (inTok || outTok) {
+    USAGE.in += inTok;
+    USAGE.out += outTok;
+    USAGE.calls += 1;
+    console.log(`  usage: in=${inTok} out=${outTok} cache_read=${cacheRead} cache_write=${cacheWrite} · session total in=${USAGE.in} out=${USAGE.out} over ${USAGE.calls} call(s)`);
+  }
+
+  return { text, usage: { input_tokens: inTok, output_tokens: outTok }, sources: extractSources({ content: blocks }) };
 }
 
 /* Pull cited URLs out of a finalMessage that used the web_search tool. */
@@ -777,29 +815,65 @@ app.post('/api/extract', requireAuth, upload.single('file'), async (req, res) =>
   }
 });
 
+/* Build a short, high-level completion summary from generated markdown — this is what the
+   screen shows instead of the full artifact (the artifact itself goes straight to the file). */
+function describe(artifact, name, inputs, markdown) {
+  const md = String(markdown || '');
+  const h1 = md.match(/^#\s+(.+)$/m);
+  const title = (h1 ? h1[1] : (name || artifact)).replace(/[*_`]/g, '').trim();
+  const sections = (md.match(/^#{2,3}\s+/gm) || []).length;
+  const tables = extractTables(md);
+  const tableRows = tables.reduce((n, t) => n + (t.rows?.length || 0), 0);
+  const words = md.split(/\s+/).filter(Boolean).length;
+  const ctx = [];
+  const i = inputs || {};
+  if (i.framework) ctx.push(i.framework);
+  if (i.platform) ctx.push(i.platform);
+  if (i.vendor) ctx.push(i.vendor);
+  if (i.topic) ctx.push(i.topic);
+  if (i.scope) ctx.push(i.scope);
+  return {
+    title,
+    context: [...new Set(ctx)].slice(0, 4).join(' · '),
+    sections,
+    tables: tables.length,
+    tableRows,
+    words,
+  };
+}
+
 app.post('/api/generate', requireAuth, generateLimiter, async (req, res) => {
   const { artifact, artifactName, inputs = {} } = req.body || {};
   if (!artifact || !TASKS[artifact]) return res.status(400).json({ error: 'Unknown artifact type.' });
-  const send = openSSE(res);
 
-  if (!client) {
-    await streamDemo(send, demoArtifact(artifact, artifactName, inputs));
-    send({ done: true });
-    return res.end();
-  }
+  const format = EXPORT_FMT[artifact] || 'docx';
   try {
-    await streamClaude({
-      send,
-      system: buildSystem(artifact, inputs),
-      user: buildUser(artifact, artifactName, inputs),
-      maxTokens: 8000,
+    let markdown;
+    if (!client) {
+      markdown = demoArtifact(artifact, artifactName, inputs);
+    } else {
+      const result = await streamClaude({
+        system: buildSystem(artifact, inputs),
+        user: buildUser(artifact, artifactName, inputs),
+        maxTokens: 8000,
+      });
+      markdown = result.text;
+    }
+    if (!String(markdown || '').trim()) {
+      return res.status(502).json({ error: 'No content was returned. Check the server logs and try again.' });
+    }
+    res.json({
+      ok: true,
+      artifact,
+      artifactName: artifactName || artifact,
+      format,
+      markdown,
+      summary: describe(artifact, artifactName, inputs, markdown),
+      demo: !client,
     });
-    send({ done: true });
-    res.end();
   } catch (err) {
     console.error('generate failed:', err);
-    send({ error: err?.message || 'Generation failed.' });
-    res.end();
+    res.status(500).json({ error: err?.message || 'Generation failed.' });
   }
 });
 
@@ -905,14 +979,14 @@ app.post('/api/skills/improve', requireWrite, improveLimiter, async (req, res) =
   ].filter(Boolean).join('\n');
 
   try {
-    const finalMsg = await streamClaude({
-      send,
+    const result = await streamClaude({
       system,
       user,
       maxTokens: 16000,
       tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 6 }],
+      onText: t => send({ text: t }),
     });
-    send({ done: true, sources: extractSources(finalMsg) });
+    send({ done: true, sources: result.sources });
     res.end();
   } catch (err) {
     console.error('improve failed:', err);
